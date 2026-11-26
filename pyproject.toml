@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=77", "numpy", "VBMicrolensing>=5.5"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SingleLensFitter"
+version = "0.1.0"
+description = "Single-lens (PSPL / FSPL / annual+space parallax) light-curve fitting"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY.md", "licenses/*.txt"]
+requires-python = ">=3.10"
+dependencies = ["numpy", "jax", "scipy", "VBMicrolensing>=5.5"]
+
+[project.urls]
+Repository = "https://github.com/NunotaKansuke/SingleLensFitter"
+Documentation = "https://github.com/NunotaKansuke/SingleLensFitter/blob/main/docs/api.md"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+singlelensfitter = ["data/*.txt", "cpp/*.hpp"]

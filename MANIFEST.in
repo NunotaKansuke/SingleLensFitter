@@ -1,0 +1,2 @@
+include docs/api.md
+recursive-include tests *.py

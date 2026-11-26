@@ -1,0 +1,320 @@
+import os
+from pathlib import Path
+
+import numpy as np
+import pytest
+import jax.numpy as jnp
+
+from singlelensfitter import (
+    FSPLFitter,
+    ParallaxEvaluator,
+    PSPLParallaxFitter,
+    FSPLParallaxFitter,
+)
+import singlelensfitter.magnification as magnification
+from singlelensfitter.singlelens_model import A_pspl_space_parallax_func
+from singlelensfitter import parallax
+from singlelensfitter.trajectory import (
+    make_space_parallax_projector,
+    u_space_parallax_tau_beta,
+)
+
+
+_satellite_path = os.environ.get("JACSCANOMALY_ROMAN_SATELLITE_PATH")
+ROMAN_SATELLITE1 = Path(_satellite_path).expanduser() if _satellite_path else None
+
+
+def _has_roman_satellite() -> bool:
+    return ROMAN_SATELLITE1 is not None and ROMAN_SATELLITE1.is_file()
+
+
+def test_vbm_satellite_loader_reads_roman_table():
+    if not _has_roman_satellite():
+        pytest.skip("Roman satellite sample file is not available.")
+
+    table = parallax.load_vbm_satellite_file(str(ROMAN_SATELLITE1))
+
+    assert table.shape[1] == 4
+    assert table.shape[0] > 1000
+    np.testing.assert_allclose(
+        table[0],
+        [2458346.501847300, 325.424660, -14.099340, 0.01511615888369],
+    )
+
+
+def test_satellite_ephemeris_converts_radec_distance_to_cartesian_au():
+    table = np.array(
+        [
+            [1.0, 0.0, 0.0, 2.0],
+            [2.0, 90.0, 0.0, 2.0],
+            [3.0, 0.0, 90.0, 2.0],
+        ]
+    )
+
+    eph = parallax.SatelliteEphemeris.from_radec_distance_table(table)
+
+    np.testing.assert_allclose(np.asarray(eph.r[0]), [2.0, 0.0, 0.0], atol=1e-12)
+    np.testing.assert_allclose(np.asarray(eph.r[1]), [0.0, 2.0, 0.0], atol=1e-12)
+    np.testing.assert_allclose(np.asarray(eph.r[2]), [0.0, 0.0, 2.0], atol=1e-12)
+
+
+def test_space_parallax_projector_adds_satellite_offsets():
+    if not _has_roman_satellite():
+        pytest.skip("Roman satellite sample file is not available.")
+
+    ra_deg = 267.623337808
+    dec_deg = -29.1164180355
+    tref = 2459000.0
+    projector = make_space_parallax_projector(
+        ra_deg,
+        dec_deg,
+        tref,
+        str(ROMAN_SATELLITE1),
+    )
+
+    t = jnp.asarray([2458990.0, 2459000.0, 2459010.0])
+    tau, beta = u_space_parallax_tau_beta(t, tref, 100.0, 0.1, 0.02, 0.03, projector)
+
+    assert tau.shape == (3,)
+    assert beta.shape == (3,)
+    assert np.all(np.isfinite(np.asarray(tau)))
+    assert np.all(np.isfinite(np.asarray(beta)))
+    assert not np.allclose(np.asarray(tau), np.asarray((t - tref) / 100.0))
+
+
+def test_annual_projector_honors_explicit_reduced_time_offset():
+    from singlelensfitter.trajectory import make_parallax_projector
+
+    offset = 2_460_000.0
+    full_tref = 2_459_000.0
+    full_time = np.asarray([2_458_990.0, 2_459_000.0, 2_459_010.0])
+    reduced_time = full_time - offset
+    full_projector = make_parallax_projector(
+        267.6, -29.1, full_tref, use_HJD=False
+    )
+    reduced_projector = make_parallax_projector(
+        267.6,
+        -29.1,
+        full_tref - offset,
+        use_HJD=False,
+        time_offset=offset,
+    )
+
+    full_offsets = parallax.earth_orbital_parallax_offsets(
+        jnp.asarray(full_time), 0.12, -0.08, full_projector
+    )
+    reduced_offsets = parallax.earth_orbital_parallax_offsets(
+        jnp.asarray(reduced_time), 0.12, -0.08, reduced_projector
+    )
+    np.testing.assert_allclose(
+        np.asarray(reduced_offsets), np.asarray(full_offsets), rtol=1e-12, atol=1e-12
+    )
+    assert float(reduced_projector.time_add) == offset
+
+
+def test_gulls_projector_honors_explicit_reduced_time_offset():
+    if not _has_roman_satellite():
+        pytest.skip("Roman satellite sample file is not available.")
+
+    offset = 2_460_000.0
+    full_tref = 2_459_000.0
+    reduced_tref = full_tref - offset
+    full_time = np.asarray([2_458_990.0, 2_459_000.0, 2_459_010.0])
+    reduced_time = full_time - offset
+    full_projector = make_space_parallax_projector(
+        267.6,
+        -29.1,
+        full_tref,
+        str(ROMAN_SATELLITE1),
+        convention="gulls",
+    )
+    reduced_projector = make_space_parallax_projector(
+        267.6,
+        -29.1,
+        reduced_tref,
+        str(ROMAN_SATELLITE1),
+        convention="gulls",
+        time_offset=offset,
+    )
+
+    full_tau_beta = u_space_parallax_tau_beta(
+        jnp.asarray(full_time), full_tref, 100.0, 0.1, 0.02, -0.03, full_projector
+    )
+    reduced_tau_beta = u_space_parallax_tau_beta(
+        jnp.asarray(reduced_time),
+        reduced_tref,
+        100.0,
+        0.1,
+        0.02,
+        -0.03,
+        reduced_projector,
+    )
+    np.testing.assert_allclose(
+        np.asarray(reduced_tau_beta), np.asarray(full_tau_beta), rtol=1e-12, atol=1e-12
+    )
+    assert float(reduced_projector.time_add) == offset
+
+
+def test_gulls_space_parallax_uses_reference_frame_subtraction():
+    # RA=0, Dec=0 gives sky east=(0,1,0), sky north=(0,0,1).
+    vectors = np.array(
+        [
+            [2450000.0, 1.0, 0.0, 0.0],
+            [2450010.0, 1.0, 0.1, 0.2],
+            [2450020.0, 1.0, 0.4, 0.8],
+        ]
+    )
+    xyz = vectors[:, 1:]
+    dist = np.linalg.norm(xyz, axis=1)
+    ra = np.degrees(np.arctan2(xyz[:, 1], xyz[:, 0]))
+    dec = np.degrees(np.arcsin(xyz[:, 2] / dist))
+    table = np.column_stack([vectors[:, 0], ra, dec, dist])
+    tref = 2450010.0
+    observer = parallax.SatelliteEphemeris.from_radec_distance_table(table)
+    projector = parallax.GullsSpaceParallaxProjector(
+        observer,
+        0.0,
+        0.0,
+        tref,
+    )
+    t = jnp.asarray([2450000.0, 2450010.0, 2450020.0])
+    tau, beta = u_space_parallax_tau_beta(t, tref, 100.0, 0.1, 0.5, 0.25, projector)
+
+    expected_tau = np.asarray([-0.225, 0.0, -0.025])
+    expected_beta = np.asarray([0.1, 0.1, 0.1])
+    np.testing.assert_allclose(np.asarray(tau), expected_tau, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(np.asarray(beta), expected_beta, rtol=1e-12, atol=1e-12)
+
+
+def test_gulls_factory_adds_geocentric_satellite_offset_to_earth():
+    if not _has_roman_satellite():
+        pytest.skip("Roman satellite sample file is not available.")
+
+    projector = make_space_parallax_projector(
+        267.623337808,
+        -29.1164180355,
+        2459000.0,
+        str(ROMAN_SATELLITE1),
+        convention="gulls",
+    )
+
+    # The input table is a roughly 0.01 AU Earth-relative Roman offset.  The
+    # complete GULLS observer orbit must retain Earth's roughly 1 AU motion.
+    radius = np.linalg.norm(np.asarray(projector.r), axis=1)
+    assert np.nanmedian(radius) > 0.9
+
+
+def test_space_parallax_matches_vbm_source_coordinate_formula():
+    if not _has_roman_satellite():
+        pytest.skip("Roman satellite sample file is not available.")
+
+    ra_deg = 267.623337808
+    dec_deg = -29.1164180355
+    tref = 2459000.0
+    t0 = 2459001.0
+    tE = 80.0
+    u0 = 0.12
+    piN = 0.02
+    piE = 0.03
+    t = jnp.asarray([2458990.0, 2459000.0, 2459010.0])
+    projector = make_space_parallax_projector(
+        ra_deg,
+        dec_deg,
+        tref,
+        str(ROMAN_SATELLITE1),
+    )
+
+    tau, beta = u_space_parallax_tau_beta(t, t0, tE, u0, piN, piE, projector)
+
+    d_tau_earth, d_beta_earth = parallax.earth_orbital_parallax_offsets_jit(
+        t, piN, piE, projector.earth
+    )
+    sat_r = parallax.interp_linear(t + projector.earth.time_add, projector.sat_t, projector.sat_r)
+    sat_west_south = -jnp.stack(
+        [
+            sat_r @ projector.earth.sky_east,
+            sat_r @ projector.earth.sky_north,
+        ],
+        axis=-1,
+    )
+    sat_west = sat_west_south[:, 0]
+    sat_south = sat_west_south[:, 1]
+
+    # VBMicrolensing source coordinates are:
+    # tn = tau0 + piN * Et_south + piE * Et_west
+    # u1 = u0   + piN * Et_west  - piE * Et_south
+    # y1 = -tn, y2 = -u1.
+    expected_tau = (t - t0) / tE + d_tau_earth + piN * sat_south + piE * sat_west
+    expected_beta = u0 + d_beta_earth + piN * sat_west - piE * sat_south
+
+    np.testing.assert_allclose(np.asarray(tau), np.asarray(expected_tau), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(np.asarray(beta), np.asarray(expected_beta), rtol=1e-12, atol=1e-12)
+
+    vbm_y1 = -np.asarray(expected_tau)
+    vbm_y2 = -np.asarray(expected_beta)
+    np.testing.assert_allclose(-np.asarray(tau), vbm_y1, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(-np.asarray(beta), vbm_y2, rtol=1e-12, atol=1e-12)
+
+
+def test_space_parallax_is_consistent_with_vbmicrolensing_runtime():
+    if not _has_roman_satellite():
+        pytest.skip("Roman satellite sample file is not available.")
+    vb = pytest.importorskip("VBMicrolensing")
+
+    coordinate_path = os.environ.get("JACSCANOMALY_ROMAN_COORDINATE_PATH")
+    coord_path = Path(coordinate_path).expanduser() if coordinate_path else None
+    if coord_path is None or not coord_path.is_file():
+        pytest.skip("Roman coordinate sample file is not available.")
+
+    ra_deg = 267.623337808
+    dec_deg = -29.1164180355
+    tref = 9000.0
+    tE = 80.0
+    u0 = 0.12
+    piN = 0.50
+    piE = 0.60
+    time = np.linspace(tref - 100.0, tref + 100.0, 41)
+
+    projector = make_space_parallax_projector(
+        ra_deg,
+        dec_deg,
+        tref,
+        str(ROMAN_SATELLITE1),
+    )
+    t_j = jnp.asarray(time)
+    tau_jac, beta_jac = u_space_parallax_tau_beta(t_j, tref, tE, u0, piN, piE, projector)
+
+    vbm = vb.VBMicrolensing()
+    sun_table = Path(vb.__file__).parent / "data" / "SunEphemeris.txt"
+    vbm.LoadSunTable(str(sun_table))
+    vbm.SetObjectCoordinates(str(coord_path), str(ROMAN_SATELLITE1.parent))
+    vbm.parallaxsystem = 1
+    vbm.t0_par_fixed = 1
+    vbm.t0_par = tref
+    vbm.t_in_HJD = 1
+    vbm.satellite = 1
+
+    _, y1, y2 = vbm.PSPLLightCurveParallax(
+        [u0, float(np.log(tE)), tref, piN, piE],
+        time.tolist(),
+    )
+    tau_vbm = -np.asarray(y1, dtype=float)
+    beta_vbm = -np.asarray(y2, dtype=float)
+
+    u_vbm = np.sqrt(tau_vbm * tau_vbm + beta_vbm * beta_vbm)
+    traj_err = np.sqrt((np.asarray(tau_jac) - tau_vbm) ** 2 + (np.asarray(beta_jac) - beta_vbm) ** 2)
+    assert np.max(traj_err / np.maximum(u_vbm, np.finfo(float).eps)) < 2.0e-4
+
+
+
+
+
+
+
+
+
+
+
+
+
+
