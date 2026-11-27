@@ -41,42 +41,7 @@ approximation for both radii; its reference χ² increases at ρ = 0.24.
 
 </details>
 
-[All 297 measurements, including the SLF finite-difference control](matched_fits.csv) · [45 singlens fits and JIT warmup times](singlens_fits.csv)
-
-## Fits using package APIs
-
-The workflows below start from the same geometry and use the same photometry
-as the matched LM comparison. Each optimizer uses its own stopping rules.
-The times are medians of nine warmed fits. Reference χ² is evaluated with the
-same independent model used above.
-
-| Source | SLF | VBM + finite-difference LM | MulensModel + Nelder–Mead | pyLIMA TRFfit | singlens + TRF |
-|---|---:|---:|---:|---:|---:|
-| Point source | 0.87 ms (χ² = 958.90) | 2.40 ms (χ² = 958.90) | 30.58 ms (χ² = 958.90) | 5.00 ms (χ² = 958.90) | 1.59 ms (χ² = 958.90) |
-| ρ = 0.024, uniform | 1.66 ms (χ² = 961.20) | 5.13 ms (χ² = 979.00) | 192.34 ms (χ² = 961.83) | 21.17 ms (χ² = 961.83) | 8.31 ms (χ² = 961.18) |
-| ρ = 0.024, linear | 2.99 ms (χ² = 961.05) | 14.81 ms (χ² = 1069.18) | Evaluation limit reached | 19.15 ms (χ² = 961.58) | 8.35 ms (χ² = 961.04) |
-| ρ = 0.24, uniform | 1.74 ms (χ² = 959.98) | 5.92 ms (χ² = 960.17) | 58.84 ms (χ² = 1022.88) | 43.46 ms (χ² = 960.17) | 6.12 ms (χ² = 959.98) |
-| ρ = 0.24, linear | 2.02 ms (χ² = 959.89) | 14.91 ms (χ² = 960.95) | 95.35 ms (χ² = 1012.57) | 55.58 ms (χ² = 960.95) | 6.86 ms (χ² = 959.89) |
-
-<details>
-<summary>Show the fitting calls and options</summary>
-
-| Package | Fitting workflow |
-|---|---|
-| SingleLensFitter | `PSPLFitter.fit` or `FSPLFitter.fit` with a supplied seed and `numpy_result=True`. |
-| VBMicrolensing | Batch `PSPLLightCurve` or `ESPLLightCurve` with the same two-point SciPy LM driver and `Tol = RelTol = 1e-3` for finite sources. |
-| MulensModel | Update `Model.parameters`, then call `Event.get_chi2()` from SciPy `minimize(method="Nelder-Mead")`, following the [basic fitting tutorial](https://rpoleski.github.io/MulensModel/tutorial_fit_pspl.html). Finite-source modes are Gould94/Yoo04 at both radii. |
-| pyLIMA | Supply the geometry to `TRFfit.model_parameters_guess` and call `TRFfit.fit()`. pyLIMA initializes and fits the flux parameters, uses its standard stopping rules, and computes covariance. The models are PSPL, FSPL for the small source, and FSPLarge for the larger source. For FSPLarge the upper radius bound is 1 to admit the supplied seed. |
-| singlens | Use `Model.magnification` and the bundled finite-source table. Follow the profiled-residual stage of the official example with JIT-compiled residuals, `jax.jacfwd`, and SciPy TRF with Jacobian scaling. Use the shared seed and a weighted flux solve with the benchmark’s χ² objective. [Upstream example](https://github.com/ShotaMiyazaki94/singlens/blob/23bcf7a2a1643a225f32c4e1042ebe4f65d14e8e/example/compare-single-vbml/code/experiment.py) |
-
-```sh
-taskset -c 28 python benchmarks/methods.py --workflows
-PYTHONPATH=/path/to/singlens/src JAX_PLATFORMS=cpu taskset -c 28 python benchmarks/singlens_fits.py --workflows
-```
-
-[Package workflow measurements](package_workflows.csv) · [singlens measurements and JIT warmup](singlens_workflows.csv)
-
-</details>
+[LM measurements](matched_fits.csv) · [pyLIMA TRFfit measurements](package_workflows.csv) · [singlens measurements and JIT warmup](singlens_fits.csv)
 
 ### Benchmark light curves
 
