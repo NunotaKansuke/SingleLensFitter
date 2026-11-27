@@ -11,7 +11,7 @@ Requires Python 3.10+ and a C++17 compiler with OpenMP. On macOS, set
 `SINGLELENSFITTER_DISABLE_OPENMP=1` to build with Apple Clang.
 
 ```sh
-python -m pip install git+https://github.com/NunotaKansuke/SingleLensFitter.git
+python -m pip install SingleLensFitter
 ```
 
 ## Fit a light curve
