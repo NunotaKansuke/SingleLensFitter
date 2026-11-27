@@ -10,6 +10,7 @@ hint.  The standalone FSPL fitter, the parallax fitters and ``Finder`` all call
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Optional, Sequence
@@ -31,6 +32,7 @@ SEED_MAX = 24
 T0_HINT_TE_COEFF = 1.0
 T0_HINT_SPAN_FRACTION = 0.05
 T0_HINT_PEAKS_PER_TEMPLATE = 8
+_last_search = None
 
 
 
@@ -145,15 +147,30 @@ def pspl_initial_guesses(
     # brightening, so keep several local peaks per template to find the hinted one.
     peaks = T0_HINT_PEAKS_PER_TEMPLATE if t0_hint is not None else 1
     candidate_pool_size = max(1, n_u0 * n_tE * peaks, int(cfg.auto_init_fft_top_k))
-    search = scanner.search_tE(
-        time,
-        flux_np,
-        ferr_np,
-        u0_grid=u0_grid,
-        tE_grid=tE_grid,
-        top_k=candidate_pool_size,
-        peaks_per_template=peaks,
-    )
+    # PSPL and parallax frequently use the same bank on the same observations.
+    # Compare the complete inputs, including changes to a mask or an array in place.
+    digest = hashlib.blake2b(digest_size=16)
+    for values in (time, flux_np, ferr_np):
+        digest.update(np.ascontiguousarray(values))
+    key = (time.shape, flux_np.shape, ferr_np.shape, digest.digest(),
+           u0_grid.tobytes(), tE_grid.tobytes(), candidate_pool_size, peaks,
+           cfg.auto_init_fft_grid_dt, cfg.auto_init_fft_max_grid_points,
+           cfg.auto_init_fft_workers)
+    global _last_search
+    cached = _last_search
+    if cached is not None and cached[0] == key:
+        search = cached[1]
+    else:
+        search = scanner.search_tE(
+            time,
+            flux_np,
+            ferr_np,
+            u0_grid=u0_grid,
+            tE_grid=tE_grid,
+            top_k=candidate_pool_size,
+            peaks_per_template=peaks,
+        )
+        _last_search = (key, search)
 
     candidates = filter_pspl_fft_candidates(
         search.candidates,

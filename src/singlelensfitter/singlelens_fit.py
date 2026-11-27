@@ -46,5 +46,7 @@ class SingleLensFitResult:
     # Lower-chi-square automatic candidate that still lacks confirmed convergence.
     unfinished_candidate: Optional[SingleLensFitResult] = None
 
+    mask: Optional[np.ndarray] = None  # True for observations excluded from fitting.
+
 
 __all__ = ["SingleLensFitResult"]

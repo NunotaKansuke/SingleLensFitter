@@ -69,7 +69,7 @@ class _FluxProfile:
     """Weighted two-column regression with fixed observations during a fit."""
 
     def __init__(self, flux, ferr):
-        self.errors = np.maximum(np.asarray(ferr, dtype=float), 1e-12)
+        self.errors = np.asarray(ferr, dtype=float)
         self.weights = 1.0 / (self.errors * self.errors)
         self.weight_sum = np.sum(self.weights)
         self.y_mean = np.sum(self.weights * flux) / self.weight_sum
@@ -301,6 +301,11 @@ class PSPLFitter:
         self.plotter = _make_plotter()
         self._last_fit: Optional[SingleLensFitResult] = None
 
+    def prepare(self, time, flux, ferr):
+        """Prepare one light curve for repeated masked fits and objective evaluations."""
+        from .prepared import PreparedCurve
+        return PreparedCurve(self, time, flux, ferr)
+
     @property
     def parameter_dimension(self) -> int:
         return 3
@@ -327,6 +332,7 @@ class PSPLFitter:
         ferr: np.ndarray,
         q: np.ndarray,
         result,
+        numpy_result=False,
     ) -> SingleLensFitResult:
         magnification = self._magnification(time, q)
         fs, fb = _solve_fs_fb_numpy(magnification, flux, ferr)
@@ -336,18 +342,19 @@ class PSPLFitter:
         residual = flux - model
         normalized = residual / ferr
         chi2 = float(np.dot(normalized, normalized))
+        asarray = np.asarray if numpy_result else jnp.asarray
         fit = SingleLensFitResult(
             time=time,
             flux=flux,
             ferr=ferr,
-            params=jnp.asarray(q),
+            params=asarray(q),
             param_names=("t0", "tE", "u0"),
-            chi2=jnp.asarray(chi2),
-            chi2_dof=jnp.asarray(chi2 / max(time.size - 3, 1)),
-            fs=jnp.asarray(fs),
-            fb=jnp.asarray(fb),
-            model_flux=jnp.asarray(model),
-            residual=jnp.asarray(residual),
+            chi2=asarray(chi2),
+            chi2_dof=asarray(chi2 / max(time.size - 3, 1)),
+            fs=asarray(fs),
+            fb=asarray(fb),
+            model_flux=asarray(model),
+            residual=asarray(residual),
             model_kind="pspl",
             optimizer_success=bool(result.success),
             optimizer_status=_optimizer_status(result, maxiter=self.maxiter),
@@ -371,6 +378,9 @@ class PSPLFitter:
             )
             self._last_fit = best_fit
             return best_fit
+        return self._fit_from_seed(time_np, flux_np, ferr_np, p0)
+
+    def _fit_from_seed(self, time_np, flux_np, ferr_np, p0, *, numpy_result=False):
         q0 = np.asarray(p0, dtype=float).reshape(-1)
         if q0.size != 3:
             raise ValueError("PSPL p0 must contain (t0, tE, u0).")
@@ -425,7 +435,7 @@ class PSPLFitter:
         )
         q = self._decode(np.asarray(result.x, dtype=float))
         q[0] += time_origin
-        return self._make_fit(time_np, flux_np, ferr_np, q, result)
+        return self._make_fit(time_np, flux_np, ferr_np, q, result, numpy_result=numpy_result)
 
     def evaluate_fixed(self, time, flux, ferr, p0) -> SingleLensFitResult:
         time_np, flux_np, ferr_np = _fit_arrays(time, flux, ferr)
@@ -485,6 +495,11 @@ class FSPLFitter:
         if self.espl_table_path is None:
             self.espl_table_path = default_espl_table_path()
 
+    def prepare(self, time, flux, ferr):
+        """Prepare one light curve for repeated masked fits and objective evaluations."""
+        from .prepared import PreparedCurve
+        return PreparedCurve(self, time, flux, ferr)
+
     @property
     def parameter_dimension(self) -> int:
         return 5 if self.fit_limb_darkening else 4
@@ -543,6 +558,7 @@ class FSPLFitter:
         ferr: np.ndarray,
         q: np.ndarray,
         result,
+        numpy_result=False,
     ) -> SingleLensFitResult:
         magnification = self._magnification(time, q)
         fs, fb = _solve_fs_fb_numpy(magnification, flux, ferr)
@@ -556,20 +572,21 @@ class FSPLFitter:
         params[3] = _espl_radius(q[3])
         a = q[4] if q.size == 5 else self.linear_limb_darkening
         evaluation_seed = np.r_[q[:4], a]
+        asarray = np.asarray if numpy_result else jnp.asarray
         fit = SingleLensFitResult(
             time=time,
             flux=flux,
             ferr=ferr,
-            params=jnp.asarray(params),
+            params=asarray(params),
             param_names=("t0", "tE", "u0", "rho") + (("a",) if q.size == 5 else ()),
             linear_limb_darkening=float(a),
-            chi2=jnp.asarray(chi2),
-            chi2_dof=jnp.asarray(chi2 / max(time.size - q.size, 1)),
-            fs=jnp.asarray(fs),
-            fb=jnp.asarray(fb),
-            model_flux=jnp.asarray(model),
-            residual=jnp.asarray(residual),
-            raw_params=jnp.asarray(q),
+            chi2=asarray(chi2),
+            chi2_dof=asarray(chi2 / max(time.size - q.size, 1)),
+            fs=asarray(fs),
+            fb=asarray(fb),
+            model_flux=asarray(model),
+            residual=asarray(residual),
+            raw_params=asarray(q),
             model_kind="fspl",
             model_evaluator=lambda values, q=evaluation_seed: self._magnification(
                 np.asarray(values, dtype=float), q
@@ -595,6 +612,7 @@ class FSPLFitter:
         flux_np: np.ndarray,
         ferr_np: np.ndarray,
         p0,
+        *, numpy_result=False,
     ) -> SingleLensFitResult:
         q0 = self._seed(p0)
 
@@ -707,7 +725,7 @@ class FSPLFitter:
                 retry_count = 1
         if retry_count:
             result.message = f"{result.message}; basin_retry={retry_count}"
-        return self._make_fit(time_np, flux_np, ferr_np, q, result)
+        return self._make_fit(time_np, flux_np, ferr_np, q, result, numpy_result=numpy_result)
 
     def _automatic_initial_guesses(
         self,

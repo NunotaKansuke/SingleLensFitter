@@ -388,6 +388,11 @@ class _ParallaxFitter:
         self.magnification_reltol = float(magnification_reltol)
         self._last_fit = None
 
+    def prepare(self, time, flux, ferr):
+        """Prepare one light curve for repeated masked fits and objective evaluations."""
+        from .prepared import PreparedCurve
+        return PreparedCurve(self, time, flux, ferr)
+
     @property
     def parameter_dimension(self) -> int:
         return 6 if self.finite_source else 5
@@ -484,7 +489,11 @@ class _ParallaxFitter:
         time = np.asarray(time, dtype=float); flux = np.asarray(flux, dtype=float); ferr = np.asarray(ferr, dtype=float)
         if time.ndim != 1 or not (time.shape == flux.shape == ferr.shape) or np.any(ferr <= 0) or not np.all(np.isfinite(time)):
             raise ValueError("time, flux, and ferr must be finite one-dimensional arrays with positive ferr.")
-        evaluator = ParallaxEvaluator(
+        evaluator = self._evaluator(time, flux, ferr)
+        return self._fit_prepared(evaluator, time, flux, ferr, q0, pspl_params, observed_scale)
+
+    def _evaluator(self, time, flux, ferr):
+        return ParallaxEvaluator(
             time, flux, ferr, ra_deg=self.ra_deg, dec_deg=self.dec_deg, tref=self.tref,
             time_spec=self.time_spec, observer_convention=self.observer_convention,
             earth_ephemeris=self.earth_ephemeris, satellite_or_observer_ephemeris=self.satellite_or_observer_ephemeris,
@@ -494,25 +503,31 @@ class _ParallaxFitter:
             magnification_reltol=self.magnification_reltol,
             linear_limb_darkening=self.linear_limb_darkening,
         )
+
+    def _fit_prepared(self, evaluator, time, flux, ferr, q0, pspl_params=None, observed_scale=None, keep=None):
+        data = (time, flux, ferr)
+
+        def fit_seed(seed):
+            return self._fit_seed(evaluator, *data, seed, keep=keep)
+
         if q0 is None:
+            selected = data if keep is None else tuple(values[keep] for values in data)
             seeds = self._automatic_fspl_initial_guesses(
-                time,
-                flux,
-                ferr,
+                *selected,
                 pspl_params=pspl_params,
                 observed_scale=observed_scale,
             )
             from .auto_init import best_fit_over_seeds
 
             best_fit = best_fit_over_seeds(
-                lambda seed: self._fit_seed(evaluator, time, flux, ferr, seed), seeds, "parallax",
+                fit_seed, seeds, "parallax",
                 seed_from_fit=self.seed_from_fit,
             )
             self._last_fit = best_fit
             return best_fit
-        return self._fit_seed(evaluator, time, flux, ferr, q0)
+        return fit_seed(q0)
 
-    def _fit_seed(self, evaluator, time, flux, ferr, q0):
+    def _fit_seed(self, evaluator, time, flux, ferr, q0, *, keep=None):
         raw0 = self._raw_seed(np.asarray(q0, dtype=float))
         if least_squares is None:
             raise ImportError(
@@ -529,15 +544,21 @@ class _ParallaxFitter:
             raw[0] += time_origin
             return raw
 
+        residual_at = evaluator.residual
+        jacobian_at = evaluator.jacobian
+        if keep is not None:
+            residual_at = lambda raw: evaluator.residual(raw, keep)
+            jacobian_at = lambda raw: evaluator.jacobian(raw, keep)
+
         def residual_fun(value):
-            return evaluator.residual(raw_from_optimizer(value))
+            return residual_at(raw_from_optimizer(value))
 
         def jacobian_fun(value):
             optimizer_value = np.asarray(value, dtype=float)
             raw_value = raw_from_optimizer(optimizer_value)
-            return np.asarray(evaluator.jacobian(raw_value), dtype=float)
+            return np.asarray(jacobian_at(raw_value), dtype=float)
 
-        lower, upper = self._bounds(time)
+        lower, upper = self._bounds(time if keep is None else time[keep])
         # A saved PSPL seed may already be outside the default u0 range.
         # Keep it feasible while retaining a finite search interval.
         u0_margin = max(1.0, 0.1 * abs(float(raw0[2])))
@@ -576,9 +597,15 @@ class _ParallaxFitter:
         )
         raw = raw_from_optimizer(np.asarray(result.x, dtype=float))
         mags = evaluator.magnification(raw)
-        model = evaluator.evaluate(raw)
+        if keep is None:
+            fs, fb = _profile_fluxes(mags, flux, ferr)
+            model = evaluator.evaluate(raw)
+            n_kept = time.size
+        else:
+            fs, fb = _profile_fluxes(mags[keep], flux[keep], ferr[keep])
+            model = fs*mags + fb
+            n_kept = np.count_nonzero(keep)
         residual = flux - model
-        fs, fb = _profile_fluxes(mags, flux, ferr)
         params = np.r_[raw[0] - float(self.time_spec.offset), np.exp(raw[1]), raw[2]]
         names = ["t0", "tE", "u0"]
         if self.finite_source:
@@ -593,7 +620,7 @@ class _ParallaxFitter:
         ):
             # Preserve a fallback for optimizer implementations that do not
             # retain their final objective vector.
-            weighted_residual = evaluator.residual(raw)
+            weighted_residual = residual_at(raw)
         chi2 = float(np.sum(weighted_residual * weighted_residual))
         try:
             jacobian = np.asarray(getattr(result, "jac", None), dtype=float)
@@ -603,7 +630,7 @@ class _ParallaxFitter:
             ):
                 # Keep the established diagnostic path if the optimizer does
                 # not return a usable Jacobian for an unusual SciPy backend.
-                jacobian = evaluator.jacobian(raw)
+                jacobian = jacobian_at(raw)
             singular = np.linalg.svd(jacobian, compute_uv=False)
             if singular.size and singular[0] > 0.0:
                 tolerance = singular[0] * max(jacobian.shape) * np.finfo(float).eps
@@ -657,13 +684,14 @@ class _ParallaxFitter:
             params=params,
             param_names=tuple(names),
             chi2=chi2,
-            chi2_dof=chi2 / max(time.size - self.parameter_dimension, 1),
+            chi2_dof=chi2 / max(n_kept - self.parameter_dimension, 1),
             fs=fs,
             fb=fb,
             model_flux=model,
             residual=residual,
             raw_params=raw,
             parallax_projector=evaluator,
+            mask=None if keep is None else ~keep,
             model_evaluator=None,
             linear_limb_darkening=self.linear_limb_darkening,
             model_kind="fspl_parallax" if self.finite_source else "pspl_parallax",
@@ -674,7 +702,7 @@ class _ParallaxFitter:
         self._last_fit = fit
         return fit
 
-    def evaluate_fixed(self, time, flux, ferr, q0):
+    def evaluate_fixed(self, time, flux, ferr, q0, *, mask=None):
         """Evaluate a native parallax model without optimizing its parameters."""
         time = np.asarray(time, dtype=float)
         flux = np.asarray(flux, dtype=float)
@@ -685,23 +713,19 @@ class _ParallaxFitter:
             raise ValueError("time, flux, and ferr must be finite")
         if np.any(ferr <= 0.0):
             raise ValueError("ferr must be positive")
-        evaluator = ParallaxEvaluator(
-            time, flux, ferr, ra_deg=self.ra_deg, dec_deg=self.dec_deg, tref=self.tref,
-            time_spec=self.time_spec, observer_convention=self.observer_convention,
-            earth_ephemeris=self.earth_ephemeris,
-            satellite_or_observer_ephemeris=self.satellite_or_observer_ephemeris,
-            reference_ephemeris=self.reference_ephemeris, finite_source=self.finite_source,
-            espl_table_path=self.espl_table_path,
-            magnification_tol=self.magnification_tol,
-            magnification_reltol=self.magnification_reltol,
-            linear_limb_darkening=self.linear_limb_darkening,
-        )
+        evaluator = self._evaluator(time, flux, ferr)
         raw = self._raw_seed(np.asarray(q0, dtype=float))
         magnification = evaluator.magnification(raw)
-        fs, fb = _profile_fluxes(magnification, flux, ferr)
+        keep = slice(None)
+        if mask is not None:
+            mask = np.asarray(mask, dtype=bool).reshape(-1)
+            if mask.size != time.size or np.count_nonzero(~mask) < self.parameter_dimension + 3:
+                raise ValueError("invalid fit mask")
+            keep = ~mask
+        fs, fb = _profile_fluxes(magnification[keep], flux[keep], ferr[keep])
         model = fs * magnification + fb
         residual = flux - model
-        normalized = residual / ferr
+        normalized = residual[keep] / ferr[keep]
         chi2 = float(np.dot(normalized, normalized))
         params = np.r_[raw[0] - float(self.time_spec.offset), np.exp(raw[1]), raw[2]]
         names = ["t0", "tE", "u0"]
@@ -716,24 +740,24 @@ class _ParallaxFitter:
         from .singlelens_fit import SingleLensFitResult
         return SingleLensFitResult(
             time=time, flux=flux, ferr=ferr, params=params, param_names=tuple(names),
-            chi2=chi2, chi2_dof=chi2 / max(time.size - self.parameter_dimension, 1),
+            chi2=chi2, chi2_dof=chi2 / max(normalized.size - self.parameter_dimension, 1),
             fs=fs, fb=fb, model_flux=model, residual=residual, raw_params=raw,
             parallax_projector=evaluator,
             model_evaluator=None,
             linear_limb_darkening=self.linear_limb_darkening,
             model_kind="fspl_parallax" if self.finite_source else "pspl_parallax",
             optimizer_success=True,
-            optimizer_status="fixed_parameters",
+            optimizer_status="fixed_parameters", mask=mask,
         )
 
-    def fit_fixed_model(self, time, flux, ferr, q0, *, model_kind=None):
+    def fit_fixed_model(self, time, flux, ferr, q0, *, model_kind=None, mask=None):
         """Evaluate fixed nonlinear parameters through the common fitter API."""
         expected = "fspl_parallax" if self.finite_source else "pspl_parallax"
         if model_kind not in {None, expected}:
             raise ValueError(
                 f"{expected} fitter cannot evaluate model_kind={model_kind!r}."
             )
-        return self.evaluate_fixed(time, flux, ferr, q0)
+        return self.evaluate_fixed(time, flux, ferr, q0, mask=mask)
 
 
 def parallax_effect_score(
@@ -754,11 +778,18 @@ def parallax_effect_score(
     if not isinstance(evaluator, ParallaxEvaluator) or raw is None:
         raise ValueError("parallax effect scoring requires a parallax fit")
     raw = np.asarray(raw, dtype=float).reshape(-1)
-    residual = np.asarray(evaluator.residual(raw), dtype=float).reshape(-1)
-    jacobian = np.asarray(evaluator.jacobian(raw), dtype=float)
+    fit_mask = getattr(fit, "mask", None)
+    if fit_mask is None:
+        residual = np.asarray(evaluator.residual(raw), dtype=float).reshape(-1)
+        jacobian = np.asarray(evaluator.jacobian(raw), dtype=float)
+    else:
+        active = ~np.asarray(fit_mask, dtype=bool)
+        residual, jacobian = evaluator.residual_and_jacobian(raw, active)
     if jacobian.shape != (residual.size, raw.size) or raw.size < 5:
         raise ValueError("native parallax residual/Jacobian shapes are invalid")
     keep = np.isfinite(residual) & np.all(np.isfinite(jacobian), axis=1)
+    if fit_mask is not None:
+        keep &= active
     if exclude_mask is not None:
         excluded = np.asarray(exclude_mask, dtype=bool).reshape(-1)
         if excluded.size != residual.size:
@@ -900,7 +931,7 @@ class FSPLParallaxFitter(_ParallaxFitter):
 
 
 def _profile_fluxes(magnification: np.ndarray, flux: np.ndarray, ferr: np.ndarray) -> tuple[float, float]:
-    w = 1.0 / np.maximum(np.asarray(ferr, dtype=float), 1e-12) ** 2
+    w = 1.0 / np.asarray(ferr, dtype=float) ** 2
     xm = np.sum(w * magnification) / np.sum(w); ym = np.sum(w * flux) / np.sum(w)
     denom = np.sum(w * (magnification - xm) ** 2)
     if not np.isfinite(xm) or not np.isfinite(ym) or not np.isfinite(denom):

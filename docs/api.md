@@ -69,3 +69,34 @@ time_spec=spec)`. Use ICRF/J2000 Cartesian positions shaped (N, 3) in AU
 and set `spec` to the ephemeris time convention. The ephemeris must cover
 the requested epochs. Parallax results include optimizer and ephemeris
 information in `fit.diagnostics`.
+
+### Repeated fits with different masks
+
+Prepare the observations once with any of the four fitters. A boolean mask has
+one entry per observation; `True` excludes that point from the optimization,
+the source/blend flux solution, and chi-square. Predictions and residuals in the
+result cover all original epochs.
+
+```python
+curve = fitter.prepare(time, flux, ferr)
+first = curve.fit()
+refit = curve.fit(mask=excluded, start=first)
+chi2, grad = curve.chi2_and_grad(refit.params, mask=another_mask)
+```
+
+Omitting `start` runs automatic initialization on the retained points.
+A result or a vector in physical `result.params` order starts a local fit.
+The gradient uses the same physical coordinates (including physical `tE`,
+`rho`, and the fitted limb-darkening coefficient). Scoring a new mask at
+the same parameters reuses the magnification calculation. Parallax fits
+also reuse the projection at every epoch. A prepared curve owns its input
+arrays and mutable evaluation cache; use one instance per concurrent worker.
+
+### Host fitting for jacscanomaly
+
+`singlelensfitter.host_fitting` provides the PSPL, FSPL and parallax fitters
+used by jacscanomaly. They share the standalone numerical kernels and retain
+the host search's seed order and lowest-χ² selection. Prepare each light curve
+once. Use `curve.fit(mask=excluded)` for a fresh search on the kept samples
+and `curve.fit(mask=excluded, start=fit.params)` to continue a previous fit.
+The latter skips template search. Returned models cover all epochs.

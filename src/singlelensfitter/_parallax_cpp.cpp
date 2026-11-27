@@ -452,6 +452,22 @@ PyObject* evaluator_jacobian_fd(EvaluatorObject* self, PyObject* raw_obj, PyObje
     return reinterpret_cast<PyObject*>(out);
 }
 
+inline void magnification_partials(const EvaluatorData& data, size_t i, double tE,
+                                   double rho, double piEN, double piEE,
+                                   double peak_slope, double* out) {
+    const auto& geometry = data.geometry[i];
+    const double tau = data.tau[i], beta = data.beta[i];
+    const double slope = data.separation[i] > 0. ? data.d_du[i] / data.separation[i] : 0.;
+    const double along = slope * tau, across = slope * beta;
+    const size_t pi_index = data.finite_source ? 4 : 3;
+    out[0] = -along * peak_slope / tE;
+    out[1] = -along * (tau + piEN * geometry.d_n + piEE * geometry.d_e);
+    out[2] = across;
+    if (data.finite_source) out[3] = data.d_drho[i] * rho;
+    out[pi_index] = -along * geometry.d_n - across * geometry.d_e;
+    out[pi_index + 1] = -along * geometry.d_e + across * geometry.d_n;
+}
+
 // Analytic Jacobian of the profiled residual.
 //
 // The magnification depends on the parameters only through u(t) (and rho), so
@@ -467,7 +483,6 @@ bool analytic_jacobian(EvaluatorObject* self, const std::vector<double>& raw, Py
         unpack_raw(self, raw, t0, tE, u0, rho, piEN, piEE);
         const size_t n = self->data.time.size();
         const size_t np = static_cast<size_t>(self->data.nparam);
-        const size_t pi_index = self->data.finite_source ? 4 : 3;
         std::vector<unsigned char> mask;
         if (!active_mask(mask_obj, n, mask)) return false;
         const double peak_slope = self->data.trajectory->source_peak_time_derivative(t0);
@@ -475,17 +490,7 @@ bool analytic_jacobian(EvaluatorObject* self, const std::vector<double>& raw, Py
         const auto& mags=self->data.cached_magnifications;
         prepare_profile(self->data,mask);
         for (size_t i=0; i<n; ++i) {
-            const double a_u=self->data.d_du[i], a_rho=self->data.d_drho[i];
-            const double tau=self->data.tau[i], beta=self->data.beta[i], u=self->data.separation[i];
-            const double d_n=self->data.geometry[i].d_n, d_e=self->data.geometry[i].d_e;
-            const double tau_rect = tau + piEN*d_n + piEE*d_e;
-            // d(tau, beta)/d(t0, ln tE, u0, piEN, piEE)
-            const double dtau[5] = {-peak_slope / tE, -tau_rect, 0.0, -d_n, -d_e};
-            const double dbeta[5] = {0.0, 0.0, 1.0, -d_e, d_n};
-            double* out = &jac[i * np];
-            const int map[5] = {0, 1, 2, static_cast<int>(pi_index), static_cast<int>(pi_index) + 1};
-            for (int j = 0; j < 5; ++j) out[map[j]] = a_u * (tau * dtau[j] + beta * dbeta[j]) / u;
-            if (self->data.finite_source) out[3] = a_rho * rho;
+            magnification_partials(self->data, i, tE, rho, piEN, piEE, peak_slope, &jac[i*np]);
         }
         const auto& groups=self->data.groups;
         const size_t ng=groups.size();
@@ -559,7 +564,42 @@ PyObject* evaluator_residual_and_jacobian(EvaluatorObject* self, PyObject* args,
     return Py_BuildValue("NN",make_array(residual),jac);
 }
 
+PyObject* evaluator_chi2_and_grad(EvaluatorObject* self, PyObject* args) {
+    PyObject *params, *active = Py_None;
+    if (!PyArg_ParseTuple(args, "O|O", &params, &active)) return nullptr;
+    auto& data = self->data;
+    std::vector<double> raw;
+    std::vector<unsigned char> mask;
+    if (!parse_raw(self, params, raw) || !active_mask(active, data.time.size(), mask))
+        return nullptr;
+    try {
+        prepare_curve(self, raw);
+        prepare_profile(data, mask);
+        double t0, tE, u0, rho, north, east;
+        unpack_raw(self, raw, t0, tE, u0, rho, north, east);
+        const double peak_slope = data.trajectory->source_peak_time_derivative(t0);
+        std::vector<double> grad(data.nparam, 0.);
+        double chi2 = 0.;
+        for (size_t i = 0; i < mask.size(); ++i) {
+            if (!mask[i]) continue;
+            const auto& group = data.groups[data.dataset[i]];
+            const double residual = data.flux[i] - (group.fs * data.cached_magnifications[i] + group.fb);
+            const double weighted = data.weights[i] * residual;
+            chi2 += residual * weighted;
+            double partials[6];
+            magnification_partials(data, i, tE, rho, north, east, peak_slope, partials);
+            const double factor = -2. * group.fs * weighted;
+            for (size_t j = 0; j < grad.size(); ++j) grad[j] += factor * partials[j];
+        }
+        return Py_BuildValue("dN", chi2, make_array(grad));
+    } catch (const std::exception& exc) {
+        PyErr_SetString(PyExc_ValueError, exc.what());
+        return nullptr;
+    }
+}
+
 PyMethodDef evaluator_methods[] = {
+    {"chi2_and_grad", reinterpret_cast<PyCFunction>(evaluator_chi2_and_grad), METH_VARARGS, "Profiled chi-square and gradient in native coordinates."},
     {"trajectory", reinterpret_cast<PyCFunction>(evaluator_trajectory), METH_VARARGS|METH_KEYWORDS, "Evaluate tau/beta/u and optional trajectory components."},
     {"magnification", reinterpret_cast<PyCFunction>(evaluator_magnification), METH_VARARGS|METH_KEYWORDS, "Evaluate compiled finite-source magnification."},
     {"evaluate", reinterpret_cast<PyCFunction>(evaluator_evaluate), METH_VARARGS|METH_KEYWORDS, "Evaluate profiled model flux."},
