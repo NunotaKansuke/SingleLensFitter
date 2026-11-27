@@ -2,17 +2,12 @@
 
 ## Matched seeded fits
 
-Each package fits the same 1,000 synthetic observations from the same initial
-geometry. pyLIMA uses its native TRF fitter. The other four use SciPy LM
-(`ftol = xtol = gtol = 1e-6`). Bars show the median
-of nine warmed fits on one Xeon Gold 6530 core. Shorter bars mean faster fits.
+All five packages fit the same 1,000 observations from the same starting geometry.
+Times are medians of nine warmed fits on one Xeon Gold 6530 core.
 
 ![Median fit time in milliseconds for five packages across five source profiles](figures/matched-fit-times.png)
 
-Each cell gives the time followed by the reference χ² in parentheses.
-The reference score uses independent magnification calculations at each
-package’s fitted geometry and a new weighted fit of source and blend flux.
-Lower χ² means closer agreement with the observations within that row.
+Cells show fit time and reference χ². Lower χ² indicates a closer fit within each row.
 
 | Source | SLF (development) | VBM + finite-difference LM | MulensModel | pyLIMA TRFfit | singlens |
 |---|---:|---:|---:|---:|---:|
@@ -22,16 +17,14 @@ Lower χ² means closer agreement with the observations within that row.
 | ρ = 0.24, uniform | 1.73 ms (χ² = 959.98) | 5.74 ms (χ² = 960.17) | 11.25 ms (χ² = 1022.81) | 43.46 ms (χ² = 960.17) | 6.09 ms (χ² = 959.98) |
 | ρ = 0.24, linear | 1.85 ms (χ² = 959.89) | 14.06 ms (χ² = 960.95) | 14.37 ms (χ² = 1012.65) | 55.58 ms (χ² = 960.95) | 5.13 ms (χ² = 959.89) |
 
-SLF uses analytical derivatives and singlens uses JAX autodiff. VBM and MulensModel use a shared
-two-point finite-difference LM driver. The MulensModel series uses a small-source
-approximation for both radii; its reference χ² increases at ρ = 0.24.
+MulensModel uses a small-source approximation at both radii, including ρ = 0.24.
 
 <details>
 <summary>Show the APIs and options used for each package</summary>
 
 | Package | API called by the benchmark | Mode and options |
 |---|---|---|
-| **[SingleLensFitter](https://github.com/NunotaKansuke/SingleLensFitter)** | `PSPLFitter.fit(time, flux, err, p0, numpy_result=True)` or `FSPLFitter.fit(..., numpy_result=True)` | Supplied seed, built-in analytical Jacobian, NumPy output. For FSPL, `linear_limb_darkening=0` or `0.5`. |
+| **[SingleLensFitter](https://github.com/NunotaKansuke/SingleLensFitter)** | `PSPLFitter.fit` or `FSPLFitter.fit` | Seeded LM with analytical derivatives. |
 | **[VBMicrolensing 5.7](https://github.com/valboz/VBMicrolensing)** | `VBMicrolensing.PSPLLightCurve` or `ESPLLightCurve` with the full epoch list | ESPL table loaded once before timing. `Tol = RelTol = 1e-3`, `a1 = 0` or `0.5` and `minannuli = 1` (uniform) or `2` (linear). Fit with the benchmark’s finite-difference LM driver. |
 | **[MulensModel 3.12.0](https://github.com/rpoleski/MulensModel)** | `Model.get_magnification(time, gamma=...)` | Standard point-lens mode, `finite_source_uniform_Gould94` or `finite_source_LD_Yoo04`. The benchmark sets `gamma = 2a/(3 − a)` and uses its finite-difference LM driver. |
 | **[pyLIMA 1.9.8](https://github.com/ebachelet/pyLIMA)** | `TRFfit.fit()` with `model_parameters_guess` | `PSPLmodel` for point sources, `FSPLmodel` at ρ = 0.024 and `FSPLargemodel` at ρ = 0.24. Telescope options are `ld_a1 = a` and `ld_gamma = 2a/(3 − a)`. The native fitter initializes and fits fluxes, uses its own stopping rules, and computes covariance. The FSPLarge radius upper bound is 1. |
@@ -86,9 +79,7 @@ the peak. The lower panels give (observed − fitted flux) / σ.
   scaling and a limit of 1,000 evaluations. Source and blend fluxes are
   profiled at every trial. Method order rotates. Setup and independent
   scoring are outside the timer.
-- **Software.** The SLF build is based on the 0.1.4 release (`7cfa49d`) with the extended
-  limb-darkening table. Install this checkout in the benchmark environment.
-  [Dependencies and versions](README.md#reproduce)
+- **Software.** SLF uses NumPy output in these timings. [Environment and versions](README.md#reproduce)
 
 ```sh
 python -m pip install .

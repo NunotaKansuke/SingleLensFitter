@@ -43,10 +43,8 @@ for point-source fits, limb darkening, parallax, and derivatives.
 
 ## Benchmarks
 
-On one Xeon Gold 6530 core, the development version fit synthetic light curves
-with 1,000 observations in 0.81 ms (point source) and
-1.64–3.04 ms (finite source) with NumPy output, starting from supplied parameters. The comparison uses identical
-photometry and initial geometry across packages.
+The development version fit 1,000 observations in 0.81 ms for a point source
+and 1.64–3.04 ms for finite sources, starting from supplied parameters on one CPU core.
 
 [Benchmark results and light curves](benchmarks/comparison.md#matched-seeded-fits)
 · [Automatic fits and other benchmarks](benchmarks/README.md)
