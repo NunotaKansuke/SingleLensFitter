@@ -1,8 +1,9 @@
 # SingleLensFitter
 
 Fit point-source (PSPL) and finite-source (FSPL) microlensing light curves
-directly from single-band photometry. An FFT template search locates the event, then Levenberg–Marquardt
-optimization refines the fit using analytic derivatives.
+directly from single-band photometry.
+SingleLensFitter uses magnification templates and fast Fourier transforms to find initial
+parameters, then refines them with Levenberg–Marquardt optimization using analytic derivatives.
 Both support annual and satellite parallax. Finite-source models also support linear limb darkening.
 SingleLensFitter began as the single-lens fitting code in `jacscanomaly`.
 
@@ -27,18 +28,6 @@ fit = FSPLFitter().fit(time, flux, flux_err)
 print(fit.optimizer_success, dict(zip(fit.param_names, fit.params)))
 print(fit.chi2, fit.fs, fit.fb)
 ```
-
-## How the fit works
-
-For point-source and finite-source fits, an FFT template search finds starting
-values directly from the light curve. Finite-source templates also seed the
-source radius (`rho`). The finite-source search also tries a point-source
-template for events with weak finite-source effects. If these starts give a poor fit, the fitter retries
-using the observed event width.
-
-The fitter refines multiple starting points by weighted least squares using
-model derivatives. At each step it solves for the source and blend fluxes
-analytically.
 
 See the [API guide](https://github.com/NunotaKansuke/SingleLensFitter/blob/main/docs/api.md)
 for point-source fits, limb darkening, parallax, and derivatives.
