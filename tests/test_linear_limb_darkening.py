@@ -118,8 +118,8 @@ def test_invalid_linear_coefficient(a):
         fspl_magnification_gradient([0.1], 1., a)
 
 
-def test_large_source_mu_basis():
-    rho = 100.
+@pytest.mark.parametrize("rho", [4., 12., 31., 32., 100.])
+def test_large_source_mu_basis(rho):
     u = rho*np.array([.1, .5, .99, 1., 1.01, 1.5])
     A, du, dr, _ = fspl_magnification_gradient(u, rho, 1.)
     np.testing.assert_allclose(A, reference(u, rho, 1., 96), rtol=1e-8)
@@ -131,9 +131,9 @@ def test_large_source_mu_basis():
         np.testing.assert_allclose(derivative[use], expected, rtol=2e-4, atol=1e-10)
 
 
-@pytest.mark.parametrize("rho", [.01, .125, 1., 1.95, 2.])
+@pytest.mark.parametrize("rho", [.01, .125, 1., 1.95, 2., 3.])
 def test_mu_table_gradients_across_patches_and_blends(rho):
-    z = np.array([0., .34, np.sqrt(.5), .995, 1.005, 1.25, 2., 3.25, 5., 9.4, 10.])
+    z = np.array([0., .34, np.sqrt(.5), .995, 1.005, 1.25, 2., 3.25, 5., 6.5, 9.4, 10.])
     u = rho*z
     value, du, dr, _ = fspl_magnification_gradient(u, rho, 1.)
     np.testing.assert_allclose(value, reference(u, rho, 1., 96), rtol=1e-8)
@@ -145,10 +145,11 @@ def test_mu_table_gradients_across_patches_and_blends(rho):
                                    atol=1e-8, rtol=2e-5)
 
 
-@pytest.mark.parametrize("rho", [.01, 1.98])
+@pytest.mark.parametrize("rho", [.01, 1.98, 12., 31.])
 def test_mu_contact_blend_derivative(rho):
-    # The second radius exercises overlapping contact and radius transitions.
-    z = 1 + 1e-6*np.array([-2., -1.5, -1., 1., 1.5, 2.])
+    # At rho=31 the contact and radial blends overlap.
+    contact = 1e-6*(1 + max(0., rho-2)**2)
+    z = 1 + contact*np.array([-2., -1.5, -1., 1., 1.5, 2.])
     u = rho*z
     _, du, dr, _ = fspl_magnification_gradient(u, rho, 1.)
     for step in (rho*1e-8, rho*3e-9):

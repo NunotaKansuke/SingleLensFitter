@@ -40,3 +40,17 @@ analytically.
 
 See the [API guide](https://github.com/NunotaKansuke/SingleLensFitter/blob/main/docs/api.md)
 for point-source fits, limb darkening, parallax, and derivatives.
+
+## Benchmarks
+
+On one Xeon Gold 6530 core, the development version fit synthetic light curves
+with 1,000 observations in 1.11 ms (point source) and 2.09–3.84 ms (finite
+source), starting from supplied parameters. The comparison uses identical
+photometry, initial geometry and optimizer stopping rules across packages.
+
+[Benchmark results and light curves for all five cases](benchmarks/comparison.md#matched-seeded-fits)
+· [Automatic fits and other benchmarks](benchmarks/README.md)
+
+[![Synthetic finite-source light curve and SLF fit, with a peak close-up and normalized residuals](benchmarks/figures/rho-0.24-linear.png)](benchmarks/comparison.md#benchmark-light-curves)
+
+Linear limb darkening, ρ = 0.24. Points show the synthetic observations and the line shows the SLF fit.
