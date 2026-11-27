@@ -77,7 +77,9 @@ public:
         while (i<n) {
             const size_t begin=i;
             while (i<n && rho>=1e-12 && std::abs(input[i])>limit && std::abs(input[i])<1e150) ++i;
+#if defined(_OPENMP) && _OPENMP >= 201307
             #pragma omp simd
+#endif
             for (size_t j=begin; j<i; ++j) {
                 double slope=0;
                 const auto m=wing<derivatives,coefficient>(std::abs(input[j]),rho,slope);

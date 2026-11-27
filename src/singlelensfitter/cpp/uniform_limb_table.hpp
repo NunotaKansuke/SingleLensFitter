@@ -41,7 +41,9 @@ inline LimbIntegral uniform_limb(double delta, double rho) {
             }();
             const double z = 1+delta, scale = 4/(rho*rho);
             double value = 0;
+#if defined(_OPENMP) && _OPENMP >= 201307
             #pragma omp simd reduction(+:value)
+#endif
             for (size_t i = 0; i < nodes.size(); ++i) {
                 const double angle = z*nodes[i].one_minus_cos;
                 value += nodes[i].weight*(angle-delta)*

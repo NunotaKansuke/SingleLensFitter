@@ -74,7 +74,9 @@ inline SourceMoment near_mu_moment(double u, double rho) {
             }
             const auto& chord = angular_nodes<Order>();
             double value = 0, du = 0, drho = 0;
+#if defined(_OPENMP) && _OPENMP >= 201307
             #pragma omp simd reduction(+:value,du,drho)
+#endif
             for (int i = 0; i < Order; ++i) {
                 const auto& p = chord[i];
                 const double psi = psi_max*p.x;
