@@ -101,6 +101,5 @@ once. Use `curve.fit(mask=excluded)` for a fresh search on the kept samples
 and `curve.fit(mask=excluded, start=fit.params)` to continue a previous fit.
 The latter skips template search. Returned models cover all epochs.
 
-For CPU workflows, pass `numpy_result=True` to `PSPLFitter` or `FSPLFitter`
-when calling `fit` or `evaluate_fixed` to return fitted values as NumPy arrays.
-The parallax fitters already return host-side values.
+The development version of `PSPLFitter` and `FSPLFitter` returns NumPy results
+from `fit` and `evaluate_fixed` by default. Pass `numpy_result=False` for JAX arrays.

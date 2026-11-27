@@ -334,7 +334,7 @@ class PSPLFitter:
         ferr: np.ndarray,
         q: np.ndarray,
         result,
-        numpy_result=False,
+        numpy_result=True,
     ) -> SingleLensFitResult:
         magnification = self._magnification(time, q)
         fs, fb = _solve_fs_fb_numpy(magnification, flux, ferr)
@@ -364,11 +364,11 @@ class PSPLFitter:
         self._last_fit = fit
         return fit
 
-    def fit(self, time, flux, ferr, p0=None, *, pspl_params=None, numpy_result=False) -> SingleLensFitResult:
+    def fit(self, time, flux, ferr, p0=None, *, pspl_params=None, numpy_result=True) -> SingleLensFitResult:
         """Fit PSPL, using the shared automatic multistart when ``p0`` is absent.
 
         ``pspl_params`` (only its ``t0``) roughly locates the brightening.
-        Use ``numpy_result=True`` to keep fitted values as NumPy arrays.
+        Fitted values use NumPy by default. Pass ``numpy_result=False`` for JAX arrays.
         """
         time_np, flux_np, ferr_np = _fit_arrays(time, flux, ferr)
         if p0 is None:
@@ -383,7 +383,7 @@ class PSPLFitter:
             return best_fit
         return self._fit_from_seed(time_np, flux_np, ferr_np, p0, numpy_result=numpy_result)
 
-    def _fit_from_seed(self, time_np, flux_np, ferr_np, p0, *, numpy_result=False):
+    def _fit_from_seed(self, time_np, flux_np, ferr_np, p0, *, numpy_result=True):
         q0 = np.asarray(p0, dtype=float).reshape(-1)
         if q0.size != 3:
             raise ValueError("PSPL p0 must contain (t0, tE, u0).")
@@ -440,7 +440,7 @@ class PSPLFitter:
         q[0] += time_origin
         return self._make_fit(time_np, flux_np, ferr_np, q, result, numpy_result=numpy_result)
 
-    def evaluate_fixed(self, time, flux, ferr, p0, *, numpy_result=False) -> SingleLensFitResult:
+    def evaluate_fixed(self, time, flux, ferr, p0, *, numpy_result=True) -> SingleLensFitResult:
         time_np, flux_np, ferr_np = _fit_arrays(time, flux, ferr)
         q = np.asarray(p0, dtype=float).reshape(-1)
         if q.size != 3 or not np.all(np.isfinite(q)) or q[1] == 0.0:
@@ -562,7 +562,7 @@ class FSPLFitter:
         ferr: np.ndarray,
         q: np.ndarray,
         result,
-        numpy_result=False,
+        numpy_result=True,
     ) -> SingleLensFitResult:
         magnification = self._magnification(time, q)
         fs, fb = _solve_fs_fb_numpy(magnification, flux, ferr)
@@ -616,7 +616,7 @@ class FSPLFitter:
         flux_np: np.ndarray,
         ferr_np: np.ndarray,
         p0,
-        *, numpy_result=False,
+        *, numpy_result=True,
     ) -> SingleLensFitResult:
         q0 = self._seed(p0)
 
@@ -763,11 +763,11 @@ class FSPLFitter:
         *,
         pspl_params=None,
         observed_scale=None,
-        numpy_result=False,
+        numpy_result=True,
     ) -> SingleLensFitResult:
         """Fit FSPL, using the observed-duration seed grid when ``p0`` is absent.
 
-        Use ``numpy_result=True`` to keep fitted values as NumPy arrays.
+        Fitted values use NumPy by default. Pass ``numpy_result=False`` for JAX arrays.
         """
         time_np, flux_np, ferr_np = _fit_arrays(time, flux, ferr)
         if p0 is None:
@@ -821,7 +821,7 @@ class FSPLFitter:
             return best_fit
         return self._fit_from_seed(time_np, flux_np, ferr_np, p0, numpy_result=numpy_result)
 
-    def evaluate_fixed(self, time, flux, ferr, p0, *, numpy_result=False) -> SingleLensFitResult:
+    def evaluate_fixed(self, time, flux, ferr, p0, *, numpy_result=True) -> SingleLensFitResult:
         time_np, flux_np, ferr_np = _fit_arrays(time, flux, ferr)
         q = self._seed(p0)
         fit = self._make_fit(

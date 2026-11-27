@@ -22,17 +22,17 @@ class SingleLensFitResult:
     flux: np.ndarray
     ferr: np.ndarray
 
-    params: jnp.ndarray
+    params: np.ndarray | jnp.ndarray
     param_names: Tuple[str, ...]
-    chi2: jnp.ndarray
-    chi2_dof: jnp.ndarray
-    fs: jnp.ndarray
-    fb: jnp.ndarray
-    model_flux: jnp.ndarray
-    residual: jnp.ndarray
+    chi2: np.ndarray | jnp.ndarray
+    chi2_dof: np.ndarray | jnp.ndarray
+    fs: np.ndarray | jnp.ndarray
+    fb: np.ndarray | jnp.ndarray
+    model_flux: np.ndarray | jnp.ndarray
+    residual: np.ndarray | jnp.ndarray
 
     # Optional optimizer coordinates, e.g. log(tE) and log(rho).
-    raw_params: Optional[jnp.ndarray] = None
+    raw_params: Optional[np.ndarray | jnp.ndarray] = None
     # For parallax fits this is the C++ trajectory/magnification evaluator.
     parallax_projector: Optional[Any] = None
     # Optional evaluator used for plotting/re-evaluating non-parallax models.

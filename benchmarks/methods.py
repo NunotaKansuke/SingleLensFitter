@@ -85,8 +85,7 @@ def run(radius, a, lee_only=False, vbm_only=False, matched=False, workflows=Fals
     fitter = FSPLFitter(linear_limb_darkening=a) if finite else PSPLFitter()
 
     def slf():
-        options = {"numpy_result": True} if matched or workflows else {}
-        r = fitter.fit(time, flux, err, seed, **options)
+        r = fitter.fit(time, flux, err, seed)
         if not r.optimizer_success:
             raise RuntimeError(r.optimizer_status)
         return float(r.chi2), np.asarray(r.params)

@@ -79,7 +79,7 @@ the peak. The lower panels give (observed − fitted flux) / σ.
   scaling and a limit of 1,000 evaluations. Source and blend fluxes are
   profiled at every trial. Method order rotates. Setup and independent
   scoring are outside the timer.
-- **Software.** SLF uses NumPy output in these timings. [Environment and versions](README.md#reproduce)
+- **Software.** [Environment and versions](README.md#reproduce)
 
 ```sh
 python -m pip install .
