@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "SingleLensFitter"
-version = "0.1.1"
+version = "0.1.2"
 description = "Single-lens (PSPL / FSPL / annual+space parallax) light-curve fitting"
 readme = "README.md"
 license = "MIT"

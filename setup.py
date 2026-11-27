@@ -67,15 +67,10 @@ class build_ext(_build_ext):
                 "native FSPL/parallax backend. Install VBMicrolensing>=5.5 or set "
                 "VBMICROLENSING_SOURCE_DIR."
             )
-        vbm_library, vbm_include = vbm_sources
+        _, vbm_include = vbm_sources
         compile_args, link_args = _compile_and_link_args()
         for ext in self.extensions:
             if ext.name in {"singlelensfitter._vbm_cpp", "singlelensfitter._parallax_cpp"}:
-                # Keep the external VBM source out of ``Extension.sources``
-                # until wheel compilation.  ``sdist`` otherwise tries to copy
-                # a path outside this repository.  The isolated build
-                # environment installs VBMicrolensing from pyproject.toml.
-                ext.sources = list(ext.sources or []) + [str(vbm_library)]
                 ext.include_dirs = list(ext.include_dirs or []) + [str(vbm_include)]
             if ext.name == "singlelensfitter._vbm_cpp" and os.environ.get("SINGLELENSFITTER_XLA_INCLUDE"):
                 ext.include_dirs.append(os.environ["SINGLELENSFITTER_XLA_INCLUDE"])
@@ -107,7 +102,7 @@ extensions = []
 extensions.append(
     Extension(
         "singlelensfitter._vbm_cpp",
-        [str(VBM_CPP_SOURCE)],
+        [str(VBM_CPP_SOURCE), "src/singlelensfitter/vbm_library.cpp"],
         include_dirs=[np.get_include(), str(VBM_CPP_SOURCE.parent)],
         language="c++",
         depends=[str(VBM_CPP_SOURCE), *magnification_headers],
@@ -116,7 +111,7 @@ extensions.append(
 extensions.append(
     Extension(
         "singlelensfitter._parallax_cpp",
-        [str(PARALLAX_CPP_SOURCE)],
+        [str(PARALLAX_CPP_SOURCE), "src/singlelensfitter/vbm_library.cpp"],
         include_dirs=[np.get_include(), str(PARALLAX_CPP_SOURCE.parent)],
         language="c++",
         depends=[
