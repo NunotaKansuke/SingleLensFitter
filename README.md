@@ -31,6 +31,7 @@ print(fit.chi2, fit.fs, fit.fb)
 
 See the [API guide](https://github.com/NunotaKansuke/SingleLensFitter/blob/main/docs/api.md)
 for point-source fits, limb darkening, parallax, and derivatives.
+[How the fitter works](docs/algorithm.md) describes the FFT search and optimization.
 
 ## Benchmarks
 
