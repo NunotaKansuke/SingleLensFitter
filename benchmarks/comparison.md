@@ -26,32 +26,17 @@ two-point finite-difference driver. The MulensModel series uses a small-source
 approximation for both radii; its reference χ² increases at ρ = 0.24.
 
 <details>
-<summary>Show the fitting algorithm and magnification modes</summary>
+<summary>Show the APIs and options used for each package</summary>
 
-**How the fit works.** SciPy’s Levenberg–Marquardt solver adjusts the
-geometry (peak time, Einstein time, impact parameter and, for finite sources,
-source radius). At each trial, the selected magnification mode evaluates
-`A(t)` at all observation epochs. A weighted two-parameter linear solve
-gives the source flux and the blend flux in `F_model(t) = F_source × A(t) + F_blend`.
-LM uses the residuals `(F_obs − F_model) / σ` and their Jacobian to propose the
-next geometry. Each Jacobian accounts for the fluxes being solved again as
-the geometry changes.
+| Package | API called by the benchmark | Mode and options |
+|---|---|---|
+| **[SingleLensFitter](https://github.com/NunotaKansuke/SingleLensFitter)** | `PSPLFitter.fit(time, flux, err, p0, numpy_result=True)` or `FSPLFitter.fit(..., numpy_result=True)` | Supplied seed, built-in analytical Jacobian, NumPy output. For FSPL, `linear_limb_darkening=0` or `0.5`. |
+| **[VBMicrolensing 5.7](https://github.com/valboz/VBMicrolensing)** | `VBMicrolensing.PSPLLightCurve` or `ESPLLightCurve` with the full epoch list | ESPL table loaded once before timing. `Tol = RelTol = 1e-3`, `a1 = 0` or `0.5` and `minannuli = 1` (uniform) or `2` (linear). Fit with the benchmark’s finite-difference LM driver. |
+| **[MulensModel 3.12.0](https://github.com/rpoleski/MulensModel)** | `Model.get_magnification(time, gamma=...)` | Standard point-lens mode, `finite_source_uniform_Gould94` or `finite_source_LD_Yoo04`. The benchmark sets `gamma = 2a/(3 − a)` and uses its finite-difference LM driver. |
+| **[pyLIMA 1.9.8](https://github.com/ebachelet/pyLIMA)** | `model.model_magnification(telescope, parameters)` | `PSPLmodel` for point sources, `FSPLmodel` at ρ = 0.024 and `FSPLargemodel` at ρ = 0.24. Telescope options are `ld_a1 = a` and `ld_gamma = 2a/(3 − a)`. Fit with the benchmark’s finite-difference LM driver. |
+| **[singlens](https://github.com/ShotaMiyazaki94/singlens)** (`23bcf7a`) | `Model(source=...).magnification(times, Parameters(...))` | `source="point"`, `"uniform"` or `"linear"`. Finite sources use the bundled table through the default solver. The benchmark uses `jax.jit` and `jax.jacfwd` with CPU float64 and passes the Jacobian to SciPy LM. Initial compilation is recorded separately. |
 
-| Package | Magnification mode and Jacobian used for the plotted times |
-|---|---|
-| **[SingleLensFitter](https://github.com/NunotaKansuke/SingleLensFitter)** (development build) | Seeded `PSPLFitter.fit` or `FSPLFitter.fit` with its analytical Jacobian. Both fitters use `numpy_result=True` to return CPU results as NumPy arrays. PSPL uses the analytic point-lens formula. FSPL evaluates magnification and its partial derivatives in one C++ batch, using interpolation, direct integration near the limb where needed, and far-field formulas. Its analytic Jacobian also differentiates the flux solve; the linear coefficient is fixed at 0 or 0.5. The CSV also includes the same magnification model with two-point differences. |
-| **[VBMicrolensing 5.7](https://github.com/valboz/VBMicrolensing)** | `PSPLLightCurve` or `ESPLLightCurve` evaluates all epochs in one batch. The engine, ESPL table and time list are prepared before timing. For finite sources, `Tol = RelTol = 1e-3`, `a1 = a` and `minannuli` is 1 for uniform or 2 for linear brightness. The CSV includes a separate run with engine defaults. |
-| **[MulensModel 3.12.0](https://github.com/rpoleski/MulensModel)** | `Model.get_magnification` uses the standard point lens for PSPL, `finite_source_uniform_Gould94` for uniform FSPL and `finite_source_LD_Yoo04` for linear FSPL. The linear coefficient passed to the model is Γ = 2a/(3 − a). |
-| **[pyLIMA 1.9.8](https://github.com/ebachelet/pyLIMA)** | The driver calls `model_magnification` on `PSPLmodel` for a point source, `FSPLmodel` (Yoo approximation) at ρ = 0.024, and `FSPLargemodel` (numerical finite source) at ρ = 0.24. The telescope carries both `ld_a1 = a` and `ld_gamma = 2a/(3 − a)`. Both finite-source models at both radii are in the CSV. |
-| **[singlens](https://github.com/ShotaMiyazaki94/singlens)** | `Model(source="point" / "uniform" / "linear").magnification` uses the point-lens formula or the bundled finite-source table at commit `23bcf7a`. JAX `jit` and `jacfwd` evaluate the residual and its Jacobian in float64 on CPU, including flux profiling. Timing uses nine warmed fits on CPU 28 in a separate run with Python 3.11 and JAX 0.10.2. The CSV records the first compiled residual and Jacobian calls separately. |
-
-The VBM, MulensModel and pyLIMA entries pass their magnification functions
-to the benchmark’s SciPy LM driver. Its two-point differences perturb each
-geometry parameter and reevaluate the full residual, including the flux solve.
-[Common LM driver](fits.py) · [Package adapters](methods.py) · [singlens JAX adapter](singlens_fits.py)
-
-The earlier comparison also includes pyLIMA’s native TRF fitter and the
-MulensModel Event gradient workflow. [Earlier measurements](method_comparison.csv)
+[Shared LM driver](fits.py) · [Package calls and options](methods.py) · [singlens calls and options](singlens_fits.py)
 
 </details>
 
