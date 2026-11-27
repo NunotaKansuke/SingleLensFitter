@@ -8,9 +8,6 @@ of nine warmed fits on one Xeon Gold 6530 core. Shorter bars mean faster fits.
 
 ![Median fit time in milliseconds for five packages across five source profiles](figures/matched-fit-times.png)
 
-<details>
-<summary>Show exact fit times and reference χ²</summary>
-
 Each cell gives the time followed by the reference χ² in parentheses.
 The reference score uses independent magnification calculations at each
 package’s fitted geometry and a new weighted fit of source and blend flux.
@@ -23,8 +20,6 @@ Lower χ² means closer agreement with the observations within that row.
 | ρ = 0.024, linear | 3.04 ms (χ² = 961.05) | 14.19 ms (χ² = 1069.18) | 10.91 ms (χ² = 961.58) | 6.57 ms (χ² = 961.58) | 6.17 ms (χ² = 961.04) |
 | ρ = 0.24, uniform | 1.73 ms (χ² = 959.98) | 5.74 ms (χ² = 960.17) | 11.25 ms (χ² = 1022.81) | 26.31 ms (χ² = 960.17) | 6.09 ms (χ² = 959.98) |
 | ρ = 0.24, linear | 1.85 ms (χ² = 959.89) | 14.06 ms (χ² = 960.95) | 14.37 ms (χ² = 1012.65) | 26.07 ms (χ² = 960.95) | 5.13 ms (χ² = 959.89) |
-
-</details>
 
 SLF uses analytical derivatives and singlens uses JAX autodiff. The other three series use a shared
 two-point finite-difference driver. The MulensModel series uses a small-source
