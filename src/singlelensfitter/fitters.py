@@ -186,6 +186,8 @@ def _run_scipy_lm(
     kwargs = {
         "jac": jac,
         "method": "lm",
+        # Preserve the tested MINPACK scaling across SciPy default changes.
+        "x_scale": 1.0,
         "max_nfev": max(1, int(maxiter)),
         "xtol": tolerance,
         "ftol": tolerance,

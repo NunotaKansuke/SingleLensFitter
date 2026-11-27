@@ -34,3 +34,15 @@ def test_mask_and_continuation_reuse_only_matching_searches(monkeypatch):
     flux[100] += 0.02
     fitter.prepare(time, flux, ferr).fit(mask=changed)
     assert len(scans) == 3
+
+
+def test_seeded_fspl_recovers_radius_outside_source_transit():
+    from singlelensfitter.host_fitting import FSPLFitter
+
+    fitter = FSPLFitter(maxiter=500, tol=1e-10)
+    time = np.linspace(90, 110, 300)
+    truth = [100, 4, 0.15, 0.08]
+    flux = 1.7 * fitter.magnification_model(time)([*truth[:3], np.log(truth[3])]) + 0.2
+    result = fitter.fit(time, flux, np.full_like(time, 0.01),
+                        [100.2, 3.5, 0.18, np.log(0.1)])
+    np.testing.assert_allclose(result.params, truth, atol=1e-4)
