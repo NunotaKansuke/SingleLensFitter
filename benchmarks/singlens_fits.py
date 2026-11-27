@@ -12,7 +12,7 @@ import singlens
 from methods import photometry, score_reference
 
 
-def run(rho, a):
+def run(rho, a, workflows=False):
     time, flux, error, seed = photometry(rho, a)
     model = singlens.Model(source=("linear" if a else "uniform") if rho else "point")
     times, values, errors = map(jnp.asarray, (time - seed[0], flux, error))
@@ -37,10 +37,16 @@ def run(rho, a):
     fun(start).block_until_ready()
     jac(start).block_until_ready()
     warmup_ms = 1000 * (perf_counter() - tic)
+    options = dict(method="lm", x_scale=1., ftol=1e-6, xtol=1e-6, gtol=1e-6, max_nfev=1000)
+    if workflows:
+        lower, upper = np.full(start.size, -np.inf), np.full(start.size, np.inf)
+        if rho:
+            lower[3], upper[3] = np.log([1e-6, 10.])
+        options = dict(method="trf", bounds=(lower, upper), x_scale="jac",
+                       ftol=1e-10, xtol=1e-10, gtol=1e-8, max_nfev=400)
     for repeat in range(10):
         tic = perf_counter()
-        result = least_squares(fun, start, jac=jac, method="lm", x_scale=1.,
-                               ftol=1e-6, xtol=1e-6, gtol=1e-6, max_nfev=1000)
+        result = least_squares(fun, start, jac=jac, **options)
         ms = 1000 * (perf_counter() - tic)
         if not repeat:
             continue
@@ -49,16 +55,21 @@ def run(rho, a):
         q[1] = np.exp(q[1])
         if rho:
             q[3] = np.exp(q[3])
-        yield [rho, a, "singlens autodiff", repeat, ms, result.fun @ result.fun,
+        yield [rho, a, "singlens TRF" if workflows else "singlens autodiff", repeat, ms, result.fun @ result.fun,
                score_reference(time, flux, error, q, a), *q[:3], q[3] if rho else "",
                "ok" if result.success else result.message, result.status, result.nfev, warmup_ms]
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--workflows", action="store_true")
+    args = parser.parse_args()
     jax.config.update("jax_enable_x64", True)
     writer = csv.writer(sys.stdout, lineterminator="\n")
     writer.writerow(["rho_true", "a", "method", "repeat", "ms", "chi2", "reference_chi2",
                      "t0", "tE", "u0", "rho_fit", "status", "lm_status", "nfev", "warmup_ms"])
     for rho, a in [(0, 0), (.024, 0), (.024, .5), (.24, 0), (.24, .5)]:
-        writer.writerows(run(rho, a))
+        writer.writerows(run(rho, a, args.workflows))
         sys.stdout.flush()

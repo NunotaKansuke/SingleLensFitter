@@ -20,20 +20,22 @@ CASES = [
 
 def main():
     samples = defaultdict(list)
-    with (ROOT / "matched_fits.csv").open() as stream, (ROOT / "singlens_fits.csv").open() as extra:
-        for row in chain(csv.DictReader(stream), csv.DictReader(extra)):
-            if row["status"] == "ok":
+    with (ROOT / "matched_fits.csv").open() as stream, (ROOT / "singlens_fits.csv").open() as extra, (ROOT / "package_workflows.csv").open() as workflows:
+        for row in chain(csv.DictReader(stream), csv.DictReader(extra), (row for row in csv.DictReader(workflows) if row["method"].startswith("pyLIMA"))):
+            if row["status"] == "ok" and (
+                not row["method"].startswith("pyLIMA") or not row["method"].endswith(" + FD")
+            ):
                 key = float(row["rho_true"]), float(row["a"]), row["method"]
                 samples[key].append(float(row["ms"]))
 
     fig, ax = plt.subplots(figsize=(8, 5.8), layout="constrained")
     positions = np.arange(len(CASES))
-    labels = ["SingleLensFitter", "VBM + finite-difference LM", "MulensModel", "pyLIMA", "singlens"]
+    labels = ["SingleLensFitter", "VBM + finite-difference LM", "MulensModel", "pyLIMA TRFfit", "singlens"]
     for index, label in enumerate(labels):
         times = []
         for rho, a, _, pylima_model in CASES:
             method = ["SLF", "VBM batch + FD", "MulensModel + FD",
-                      f"pyLIMA {pylima_model} + FD", "singlens autodiff"][index]
+                      f"pyLIMA {pylima_model}", "singlens autodiff"][index]
             values = samples[rho, a, method]
             if len(values) != 9:
                 raise ValueError(f"Expected nine timings for {rho}, {a}, {method}")

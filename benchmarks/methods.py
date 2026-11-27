@@ -75,7 +75,7 @@ def photometry(radius, a):
     return time, flux, err, start
 
 
-def run(radius, a, lee_only=False, vbm_only=False, matched=False):
+def run(radius, a, lee_only=False, vbm_only=False, matched=False, workflows=False):
     finite = radius > 0
     time, flux, err, start = photometry(radius, a)
     seed = start.copy()
@@ -85,7 +85,7 @@ def run(radius, a, lee_only=False, vbm_only=False, matched=False):
     fitter = FSPLFitter(linear_limb_darkening=a) if finite else PSPLFitter()
 
     def slf():
-        options = {"numpy_result": True} if matched else {}
+        options = {"numpy_result": True} if matched or workflows else {}
         r = fitter.fit(time, flux, err, seed, **options)
         if not r.optimizer_success:
             raise RuntimeError(r.optimizer_status)
@@ -93,9 +93,9 @@ def run(radius, a, lee_only=False, vbm_only=False, matched=False):
 
     methods = {"SLF": slf}
     for label, defaults in [("VBM batch + FD", False), ("VBM default + FD", True)]:
-        if defaults and not finite:
+        if defaults and (not finite or workflows):
             continue
-        curve = vbm_curve(time, finite, a, defaults=defaults, tolerance=1e-3 if matched else 1e-4)
+        curve = vbm_curve(time, finite, a, defaults=defaults, tolerance=1e-3 if matched or workflows else 1e-4)
         methods[label] = lambda curve=curve: fd_fit(curve, flux, err, seed, geometry=True)
 
     if vbm_only:
@@ -139,7 +139,19 @@ def run(radius, a, lee_only=False, vbm_only=False, matched=False):
             raise RuntimeError(result.message)
         return float(result.fun), result.x*units
 
-    if not matched:
+    if workflows:
+        def tutorial_fit():
+            def objective(q):
+                set_params(q)
+                return ev.get_chi2()
+
+            result = minimize(objective, start, method="Nelder-Mead")
+            if not result.success:
+                raise RuntimeError(result.message)
+            return float(result.fun), result.x
+
+        methods["MulensModel Event + Nelder-Mead"] = tutorial_fit
+    elif not matched:
         methods["MulensModel Event + gradient"] = mm_fit
 
     def mm_curve(q):
@@ -160,7 +172,8 @@ def run(radius, a, lee_only=False, vbm_only=False, matched=False):
                score_reference(time, flux, err, q, a), *q, "ok"]
         return
 
-    methods["MulensModel + FD"] = lambda: fd_fit(mm_curve, flux, err, seed, geometry=True)
+    if not workflows:
+        methods["MulensModel + FD"] = lambda: fd_fit(mm_curve, flux, err, seed, geometry=True)
     telescope = telescopes.Telescope(name="survey", lightcurve=np.column_stack((time, flux, err)),
         lightcurve_names=["time","flux","err_flux"], lightcurve_units=["JD","W/m^2","W/m^2"])
     for name, arr in zip(("time","flux","err_flux"), (time, flux, err)):
@@ -170,6 +183,8 @@ def run(radius, a, lee_only=False, vbm_only=False, matched=False):
     data.telescopes.append(telescope)
     choices = [("pyLIMA PSPL", PSPLmodel)] if not finite else [
         ("pyLIMA FSPL", FSPLmodel), ("pyLIMA FSPLarge", FSPLargemodel)]
+    if workflows and finite:
+        choices = [choices[int(radius > .05)]]
     if matched:
         # Control for the derivative implementation with the same FD driver.
         methods["SLF model + FD"] = lambda: fd_fit(
@@ -228,6 +243,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--workflows", action="store_true", help="package fitting workflows")
     modes.add_argument("--matched", action="store_true", help="common LM seed, scaling and stopping rules")
     modes.add_argument("--lee09", action="store_true", help="single large-source integration fits")
     modes.add_argument("--vbm-sweep", action="store_true", help="intermediate 1e-3 VBM tolerance")
@@ -238,5 +254,5 @@ if __name__ == "__main__":
     for radius, a in cases:
         if args.vbm_sweep and radius == 0:
             continue
-        writer.writerows(run(radius, a, lee, args.vbm_sweep, args.matched))
+        writer.writerows(run(radius, a, lee, args.vbm_sweep, args.matched, args.workflows))
         sys.stdout.flush()
