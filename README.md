@@ -1,8 +1,9 @@
 # SingleLensFitter
 
-Fit single-band gravitational microlensing light curves with a point lens and
-either a point source (PSPL) or a finite source (FSPL). Both fitters support
-annual and satellite parallax. Finite-source models also support linear limb darkening.
+Fit point-source (PSPL) and finite-source (FSPL) microlensing light curves
+directly from single-band photometry. An FFT template search locates the event, then Levenberg–Marquardt
+optimization refines the fit using analytic derivatives.
+Both support annual and satellite parallax. Finite-source models also support linear limb darkening.
 SingleLensFitter began as the single-lens fitting code in `jacscanomaly`.
 
 ## Install
@@ -29,10 +30,11 @@ print(fit.chi2, fit.fs, fit.fb)
 
 ## How the fit works
 
-For a point source, an FFT template search finds starting values for the peak
-time, Einstein time, and impact parameter. For a finite source, the fitter
-uses the observed peak width to try combinations of source radius (`rho`) and
-scaled impact parameter (`u0/rho`), and ranks these starting points by chi-square.
+For point-source and finite-source fits, an FFT template search finds starting
+values directly from the light curve. Finite-source templates also seed the
+source radius (`rho`). The finite-source search also tries a point-source
+template for events with weak finite-source effects. If these starts give a poor fit, the fitter retries
+using the observed event width.
 
 The fitter refines multiple starting points by weighted least squares using
 model derivatives. At each step it solves for the source and blend fluxes

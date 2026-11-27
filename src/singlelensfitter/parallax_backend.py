@@ -467,6 +467,7 @@ class _ParallaxFitter:
             ferr,
             finite_source=self.finite_source,
             parallax=True,
+            linear_limb_darkening=self.linear_limb_darkening,
             config=self.init_config,
             pspl_params=pspl_params,
             observed_scale=observed_scale,
@@ -485,7 +486,7 @@ class _ParallaxFitter:
         pspl_params=None,
         observed_scale=None,
     ):
-        """Fit parallax, auto-seeding FSPL from the duration grid when needed."""
+        """Fit parallax, auto-seeding FSPL from the mixed FFT bank when needed."""
         time = np.asarray(time, dtype=float); flux = np.asarray(flux, dtype=float); ferr = np.asarray(ferr, dtype=float)
         if time.ndim != 1 or not (time.shape == flux.shape == ferr.shape) or np.any(ferr <= 0) or not np.all(np.isfinite(time)):
             raise ValueError("time, flux, and ferr must be finite one-dimensional arrays with positive ferr.")

@@ -28,7 +28,7 @@ def test_configured_fspl_anchors_reach_fitters(count):
     flux = fitter._magnification(t, np.array([.05, 1., .1, np.log(.3)]))
     data = (t, flux, np.full_like(t, .01))
     anchors = fitter._automatic_initial_guesses(*data)
-    assert len(anchors) == count
+    assert 1 <= len(anchors) <= count + 1
     parallax = FSPLParallaxFitter(270., -30., 0., init_config=config)
     seeds = parallax._automatic_fspl_initial_guesses(*data)
     for anchor in anchors:
@@ -83,3 +83,37 @@ def test_converged_winner_preserves_unfinished_competitor_across_gap_probes():
     winner = replace(original, chi2=.8)
     third = auto_init.best_fit_over_seeds(lambda _: winner, [0], "test", incumbent=second)
     assert third is winner and third.unfinished_candidate is None
+
+
+def test_blind_fspl_search_runs_with_pspl_hint_and_explicit_seed_skips_it(monkeypatch):
+    from singlelensfitter import fspl_fft
+
+    fitter = FSPLFitter()
+    t = np.linspace(-3., 3., 601)
+    q = np.array([.4, .8, .1, np.log(.5)])
+    flux = fitter._magnification(t, q)
+    err = np.full_like(t, .01)
+    calls = []
+    search = fspl_fft.fft_seeds
+
+    def record_search(*args):
+        seeds = search(*args)
+        calls.append(len(seeds))
+        return seeds
+
+    monkeypatch.setattr(fspl_fft, "fft_seeds", record_search)
+    blind = fitter.fit(t, flux, err, pspl_params=[-2., 20., .01])
+    explicit = fitter.fit(t, flux, err, p0=q)
+    assert len(calls) == 1 and calls[0] > 0
+    assert blind.chi2 < 1e-4 and explicit.chi2 < 1e-4
+
+
+def test_blind_fspl_includes_exact_point_source_candidate():
+    from singlelensfitter.fspl_fft import fft_seeds
+    from singlelensfitter.pspl_fft import pspl_excess_magnification
+
+    t = np.arange(-10., 10., .02)
+    flux = 1. + pspl_excess_magnification(t, u0=.5, teff=1.25)
+    seeds = fft_seeds(t, flux, np.full_like(t, .01), FSPLFitter(), InitConfig())
+    assert any(np.allclose(seed[:3], [0., 2.5, .5]) and np.isfinite(seed[3])
+               for seed in seeds)

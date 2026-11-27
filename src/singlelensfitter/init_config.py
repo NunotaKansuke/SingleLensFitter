@@ -94,7 +94,7 @@ class InitConfig:
     """Initial logrho used for FSPL models when x0 is omitted."""
 
     auto_init_fspl_template_top_k: int = 4
-    """Number of ranked FSPL template seeds passed to the fitter."""
+    """Number of finite-source template seeds. Blind FSPL fits may also try one PSPL seed."""
 
     auto_init_min_t0_support_points: int = 3
     """Minimum number of observations near an automatic PSPL seed."""

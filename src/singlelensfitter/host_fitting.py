@@ -49,7 +49,7 @@ def automatic_seeds(
     """The ordered multistart set used by the host-search fitters.
 
     Anchors are the data-driven initial guesses (PSPL FFT bank, or the FSPL
-    duration grid, whose ``rho`` comes from the observed duration), followed by
+    mixed FFT bank, with an observed-width fallback), followed by
     (with ``parallax=True`` only) the ``tE x u0`` degeneracy family -- each with
     both ``u0`` signs -- around each anchor in priority order, capped at
     ``max_seeds``.  Assumptions:
@@ -63,7 +63,8 @@ def automatic_seeds(
             time,
             flux,
             ferr,
-            top_k=4,
+            top_k=(config or InitConfig()).auto_init_fspl_template_top_k,
+            config=config,
             pspl_params=pspl_params,
             observed_scale=observed_scale,
             magnification_tol=magnification_tol,
@@ -155,7 +156,9 @@ class _HostFit:
         data = _fit_arrays(time, flux, ferr)
         excluded = _mask(mask, data[0].size, self.parameter_dimension)
         selected = data if excluded is None else tuple(x[~excluded] for x in data)
-        if p0 is None:
+        if p0 is None and self.model_kind == "fspl":
+            fit = super().fit(*selected, observed_scale=observed_scale, pspl_params=pspl_params)
+        elif p0 is None:
             seeds = self._automatic_initial_guesses(
                 *selected, pspl_params=pspl_params, observed_scale=observed_scale
             )
@@ -349,37 +352,11 @@ class FSPLFitter(_HostFit, core.FSPLFitter):
         p = np.asarray(pspl_params, dtype=float).reshape(-1)
         return np.asarray([p[0], p[1], p[2], np.log(NESTED_RHO)], dtype=float)
 
-    def _automatic_initial_guesses(
-        self,
-        time_np: np.ndarray,
-        flux_np: np.ndarray,
-        ferr_np: np.ndarray,
-        *,
-        pspl_params=None,
-        observed_scale=None,
-    ) -> tuple[np.ndarray, ...]:
-        """Shared multistart set (duration-grid anchors + degeneracy family).
-
-        With ``pspl_params`` the PSPL solution itself (:meth:`nested_seed`) is
-        one more start: the duration seeds put ``rho`` above ``u0``, from where
-        LM can stop at the limb-grazing minimum ``rho ~ u0`` and end worse than
-        the PSPL it nests.
-        """
-        seeds = automatic_seeds(
-            time_np,
-            flux_np,
-            ferr_np,
-            finite_source=True,
-            config=self.init_config,
-            pspl_params=pspl_params,
-            observed_scale=observed_scale,
-            magnification_tol=self.magnification_tol,
-            magnification_reltol=self.magnification_reltol,
-            espl_table_path=self.espl_table_path,
-        )
-        if pspl_params is None:
-            return seeds
-        return (*seeds, self.nested_seed(pspl_params))
+    def _automatic_initial_guesses(self, *data, pspl_params=None, observed_scale=None):
+        seeds = super()._automatic_initial_guesses(*data, observed_scale=observed_scale)
+        if pspl_params is not None:
+            return (*seeds, self.nested_seed(pspl_params))
+        return seeds
 
 
 class _HostParallax:
@@ -456,17 +433,11 @@ class _HostParallax:
         one more start, so the fit cannot end worse than the PSPL it nests.
         """
 
-        seeds = automatic_seeds(
-            time,
-            flux,
-            ferr,
-            finite_source=self.finite_source,
-            parallax=True,
-            pspl_params=pspl_params,
-            observed_scale=observed_scale,
-            magnification_tol=self.magnification_tol,
-            magnification_reltol=self.magnification_reltol,
-            espl_table_path=self.espl_table_path,
+        seeds = super()._automatic_fspl_initial_guesses(
+            time, flux, ferr, pspl_params=pspl_params, observed_scale=observed_scale
+        ) if self.finite_source else automatic_seeds(
+            time, flux, ferr, finite_source=False, parallax=True,
+            pspl_params=pspl_params, config=self.init_config,
         )
         if pspl_params is None:
             return seeds

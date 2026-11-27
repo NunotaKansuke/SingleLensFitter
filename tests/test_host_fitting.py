@@ -46,3 +46,26 @@ def test_seeded_fspl_recovers_radius_outside_source_transit():
     result = fitter.fit(time, flux, np.full_like(time, 0.01),
                         [100.2, 3.5, 0.18, np.log(0.1)])
     np.testing.assert_allclose(result.params, truth, atol=1e-4)
+
+
+def test_masked_host_fspl_starts_from_shared_fft(monkeypatch):
+    from singlelensfitter import fspl_fft
+    from singlelensfitter.host_fitting import FSPLFitter
+
+    fitter = FSPLFitter()
+    time = np.linspace(-2., 2., 151)
+    flux = fitter.magnification_model(time)([.1, 1., .15, np.log(.4)])
+    mask = time < -1.5
+    seen = []
+    search = fspl_fft.fft_seeds
+
+    def record(t, *args):
+        seen.append(t.copy())
+        return search(t, *args)
+
+    monkeypatch.setattr(fspl_fft, "fft_seeds", record)
+    fit = fitter.fit(time, flux, np.full_like(time, .01), mask=mask,
+                     pspl_params=[-1., 5., .02])
+    assert len(seen) == 1
+    np.testing.assert_array_equal(seen[0], time[~mask])
+    assert fit.chi2 < 1e-4

@@ -583,6 +583,11 @@ class PSPLFFTScanner:
             templates = 4.0 / (u * root * (u2 + 2.0 + u * root))
         templates = np.nan_to_num(templates, nan=0.0, posinf=0.0, neginf=0.0)
 
+        return self._profile_template_batch(prepared, templates, u0_values, tE_value)
+
+    def _profile_template_batch(self, prepared, templates, u0_values, timescales):
+        """Profile fluxes at all peak times for a batch of even excess-flux templates."""
+        row_timescales = np.broadcast_to(timescales, (len(u0_values),))
         # Thread-pool dispatch costs more than the FFT itself for small grids.
         # Keep the default ``-1`` adaptive, while honoring an explicit positive
         # worker count at every size.
@@ -647,8 +652,8 @@ class PSPLFFTScanner:
                 fb=fb[row],
                 valid=valid[row],
                 u0=float(u0),
-                teff=float(u0 * tE_value),
-                tE=tE_value,
+                teff=float(u0 * row_timescales[row]),
+                tE=float(row_timescales[row]),
                 null_chi2=float(prepared.null_chi2),
                 grid_dt=float(prepared.grid_dt),
             )

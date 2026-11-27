@@ -24,7 +24,7 @@ from typing import Optional
 import numpy as np
 import jax.numpy as jnp
 
-from .auto_init import automatic_seeds, best_fit_over_seeds
+from .auto_init import automatic_seeds, best_fit_over_seeds, duration_seeds
 from .init_config import InitConfig
 from .singlelens_fit import SingleLensFitResult
 
@@ -740,12 +740,13 @@ class FSPLFitter:
         pspl_params=None,
         observed_scale=None,
     ) -> tuple[np.ndarray, ...]:
-        """Shared multistart set (duration-grid anchors + degeneracy family)."""
+        """Return the common finite-source FFT starts."""
         return automatic_seeds(
             time_np,
             flux_np,
             ferr_np,
             finite_source=True,
+            linear_limb_darkening=self.linear_limb_darkening,
             config=self.init_config,
             pspl_params=pspl_params,
             observed_scale=observed_scale,
@@ -765,27 +766,60 @@ class FSPLFitter:
         observed_scale=None,
         numpy_result=True,
     ) -> SingleLensFitResult:
-        """Fit FSPL, using the observed-duration seed grid when ``p0`` is absent.
+        """Fit FSPL, using finite-source FFT templates when ``p0`` is absent.
 
         Fitted values use NumPy by default. Pass ``numpy_result=False`` for JAX arrays.
         """
         time_np, flux_np, ferr_np = _fit_arrays(time, flux, ferr)
         if p0 is None:
+            cfg = self.init_config or InitConfig()
             seeds = self._automatic_initial_guesses(
-                time_np,
-                flux_np,
-                ferr_np,
-                pspl_params=pspl_params,
-                observed_scale=observed_scale,
+                time_np, flux_np, ferr_np, pspl_params=pspl_params, observed_scale=observed_scale
             )
             def fit_one(seed):
                 return self._fit_from_seed(time_np, flux_np, ferr_np, seed, numpy_result=numpy_result)
 
-            best_fit = best_fit_over_seeds(fit_one, seeds, "FSPL", seed_from_fit=self.seed_from_fit)
+            best_fit = None
+            if seeds:
+                try:
+                    best_fit = best_fit_over_seeds(
+                        fit_one, seeds, "FSPL", seed_from_fit=self.seed_from_fit
+                    )
+                except RuntimeError:
+                    # No finite fit from the FFT candidates. Retry on the native cadence.
+                    pass
+
+            # Binning can merge an unresolved peak with its wings. Recheck
+            # poor fits against widths estimated on the original observations.
+            dof = max(1, time_np.size - self.parameter_dimension - 2)
+            if (best_fit is None or not best_fit.optimizer_success
+                    or best_fit.chi2 > dof + 6 * np.sqrt(2 * dof)):
+                alternatives = duration_seeds(
+                    time_np, flux_np, ferr_np, observed_scale=observed_scale,
+                    top_k=cfg.auto_init_fspl_template_top_k, espl_table_path=self.espl_table_path,
+                    magnification_tol=self.magnification_tol, magnification_reltol=self.magnification_reltol,
+                )
+                best_fit = best_fit_over_seeds(
+                    fit_one, alternatives, "FSPL", incumbent=best_fit,
+                    seed_from_fit=self.seed_from_fit,
+                )
 
             def try_alternate(current, seed):
                 return best_fit_over_seeds(fit_one, [seed], "FSPL", incumbent=current,
                                            seed_from_fit=self.seed_from_fit)
+
+            # Interior and exterior trajectories can have a similar peak width
+            # but very different wings. Try exterior chords at the fitted scale.
+            if best_fit.chi2 > dof + 6 * np.sqrt(2 * dof):
+                center, te, impact, radius = np.asarray(best_fit.params)[:4]
+                width = abs(te) * max(abs(impact), radius)
+                if width > 0:
+                    exterior = ([center, width / (1.5 * rho), 1.5 * rho, np.log(rho)]
+                                for rho in (0.03, 0.3, 3., 10.))
+                    best_fit = best_fit_over_seeds(
+                        fit_one, exterior, "FSPL", incumbent=best_fit,
+                        seed_from_fit=self.seed_from_fit,
+                    )
 
             # A transit straddling an observing gap can fit the visible limb
             # with more than one peak time. Probe farther into the missing half.

@@ -1,12 +1,4 @@
-"""Automatic initial guesses shared by every fitting entry point.
-
-The finite-source seeds come from the observed-duration grid in
-:mod:`singlelensfitter.fspl_initialization`: the observed brightening width fixes
-the crossing time, and ``rho x (u0/rho) x t0-offset`` is scanned with profiled
-source/blend fluxes.  A PSPL fit contributes only its ``t0`` as an event-centre
-hint.  The standalone FSPL fitter, the parallax fitters and ``Finder`` all call
-:func:`fspl_initial_guesses` instead of building their own copy.
-"""
+"""Automatic initial guesses shared by the single-lens fitters."""
 
 from __future__ import annotations
 
@@ -36,7 +28,27 @@ _last_search = None
 
 
 
-def fspl_initial_guesses(
+def fspl_initial_guesses(time, flux, ferr, *, top_k=4, pspl_params=None,
+                         observed_scale=None, magnification_tol=1e-4,
+                         magnification_reltol=1e-4, espl_table_path=None,
+                         parallax=False, config=None, linear_limb_darkening=0.):
+    """Scan the mixed FFT bank, using observed widths if no supported peak exists."""
+    from .fspl_fft import fft_seeds
+
+    cfg = replace(config or InitConfig(), auto_init_fspl_template_top_k=top_k)
+    settings = SimpleNamespace(espl_table_path=espl_table_path,
+                               magnification_tol=magnification_tol,
+                               magnification_reltol=magnification_reltol,
+                               linear_limb_darkening=linear_limb_darkening)
+    seeds = fft_seeds(*(np.asarray(a, dtype=float) for a in (time, flux, ferr)), settings, cfg)
+    if not seeds:
+        seeds = duration_seeds(time, flux, ferr, top_k=top_k, observed_scale=observed_scale,
+                               magnification_tol=magnification_tol, magnification_reltol=magnification_reltol,
+                               espl_table_path=espl_table_path)
+    return tuple(np.r_[seed, 0., 0.] for seed in seeds) if parallax else seeds
+
+
+def duration_seeds(
     time,
     flux,
     ferr,
@@ -337,12 +349,13 @@ def automatic_seeds(
     magnification_tol: float = 1.0e-4,
     magnification_reltol: float = 1.0e-4,
     espl_table_path: Optional[str] = None,
+    linear_limb_darkening: float = 0.,
     config: Optional[InitConfig] = None,
 ) -> tuple[np.ndarray, ...]:
     """The one automatic multistart set used by every fitter when no seed is given.
 
     Anchors are the data-driven initial guesses (PSPL FFT bank, or the FSPL
-    duration grid, whose ``rho`` comes from the observed duration), followed by
+    mixed FFT bank, with an observed-width fallback), followed by
     (with ``parallax=True`` only) the ``tE x u0`` degeneracy family -- each with
     both ``u0`` signs -- around each anchor in priority order, capped at
     ``max_seeds``.  Assumptions:
@@ -361,7 +374,8 @@ def automatic_seeds(
             observed_scale=observed_scale,
             magnification_tol=magnification_tol,
             magnification_reltol=magnification_reltol,
-            espl_table_path=espl_table_path, parallax=parallax,
+            espl_table_path=espl_table_path, parallax=parallax, config=config,
+            linear_limb_darkening=linear_limb_darkening,
         )
     else:
         t0_hint = None
