@@ -100,3 +100,7 @@ the host search's seed order and lowest-χ² selection. Prepare each light curve
 once. Use `curve.fit(mask=excluded)` for a fresh search on the kept samples
 and `curve.fit(mask=excluded, start=fit.params)` to continue a previous fit.
 The latter skips template search. Returned models cover all epochs.
+
+For CPU workflows, pass `numpy_result=True` to `PSPLFitter` or `FSPLFitter`
+when calling `fit` or `evaluate_fixed` to return fitted values as NumPy arrays.
+The parallax fitters already return host-side values.

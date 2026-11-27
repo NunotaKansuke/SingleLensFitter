@@ -44,11 +44,13 @@ for point-source fits, limb darkening, parallax, and derivatives.
 ## Benchmarks
 
 On one Xeon Gold 6530 core, the development version fit synthetic light curves
-with 1,000 observations in 1.11 ms (point source) and 2.09–3.84 ms (finite
-source), starting from supplied parameters. The comparison uses identical
+with 1,000 observations in 0.81 ms (point source) and
+1.64–3.04 ms (finite source) with NumPy output, starting from supplied parameters. The comparison uses identical
 photometry, initial geometry and optimizer stopping rules across packages.
 
-[Benchmark results and light curves for all five cases](benchmarks/comparison.md#matched-seeded-fits)
+[![Median fit time in milliseconds for SingleLensFitter, VBMicrolensing, MulensModel, pyLIMA and singlens across five source profiles](benchmarks/figures/matched-fit-times.png)](benchmarks/comparison.md#matched-seeded-fits)
+
+[Fit settings, exact timings and reference χ²](benchmarks/comparison.md#matched-seeded-fits)
 · [Automatic fits and other benchmarks](benchmarks/README.md)
 
 [![Synthetic finite-source light curve and SLF fit, with a peak close-up and normalized residuals](benchmarks/figures/rho-0.24-linear.png)](benchmarks/comparison.md#benchmark-light-curves)

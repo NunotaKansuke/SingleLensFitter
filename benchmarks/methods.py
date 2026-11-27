@@ -85,7 +85,8 @@ def run(radius, a, lee_only=False, vbm_only=False, matched=False):
     fitter = FSPLFitter(linear_limb_darkening=a) if finite else PSPLFitter()
 
     def slf():
-        r = fitter.fit(time, flux, err, seed)
+        options = {"numpy_result": True} if matched else {}
+        r = fitter.fit(time, flux, err, seed, **options)
         if not r.optimizer_success:
             raise RuntimeError(r.optimizer_status)
         return float(r.chi2), np.asarray(r.params)
@@ -94,7 +95,7 @@ def run(radius, a, lee_only=False, vbm_only=False, matched=False):
     for label, defaults in [("VBM batch + FD", False), ("VBM default + FD", True)]:
         if defaults and not finite:
             continue
-        curve = vbm_curve(time, finite, a, defaults=defaults)
+        curve = vbm_curve(time, finite, a, defaults=defaults, tolerance=1e-3 if matched else 1e-4)
         methods[label] = lambda curve=curve: fd_fit(curve, flux, err, seed, geometry=True)
 
     if vbm_only:

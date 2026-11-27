@@ -364,10 +364,11 @@ class PSPLFitter:
         self._last_fit = fit
         return fit
 
-    def fit(self, time, flux, ferr, p0=None, *, pspl_params=None) -> SingleLensFitResult:
+    def fit(self, time, flux, ferr, p0=None, *, pspl_params=None, numpy_result=False) -> SingleLensFitResult:
         """Fit PSPL, using the shared automatic multistart when ``p0`` is absent.
 
         ``pspl_params`` (only its ``t0``) roughly locates the brightening.
+        Use ``numpy_result=True`` to keep fitted values as NumPy arrays.
         """
         time_np, flux_np, ferr_np = _fit_arrays(time, flux, ferr)
         if p0 is None:
@@ -375,12 +376,12 @@ class PSPLFitter:
                 time_np, flux_np, ferr_np, finite_source=False, pspl_params=pspl_params, config=self.init_config
             )
             best_fit = best_fit_over_seeds(
-                lambda seed: self.fit(time_np, flux_np, ferr_np, seed), seeds, "PSPL",
+                lambda seed: self.fit(time_np, flux_np, ferr_np, seed, numpy_result=numpy_result), seeds, "PSPL",
                 seed_from_fit=self.seed_from_fit,
             )
             self._last_fit = best_fit
             return best_fit
-        return self._fit_from_seed(time_np, flux_np, ferr_np, p0)
+        return self._fit_from_seed(time_np, flux_np, ferr_np, p0, numpy_result=numpy_result)
 
     def _fit_from_seed(self, time_np, flux_np, ferr_np, p0, *, numpy_result=False):
         q0 = np.asarray(p0, dtype=float).reshape(-1)
@@ -439,7 +440,7 @@ class PSPLFitter:
         q[0] += time_origin
         return self._make_fit(time_np, flux_np, ferr_np, q, result, numpy_result=numpy_result)
 
-    def evaluate_fixed(self, time, flux, ferr, p0) -> SingleLensFitResult:
+    def evaluate_fixed(self, time, flux, ferr, p0, *, numpy_result=False) -> SingleLensFitResult:
         time_np, flux_np, ferr_np = _fit_arrays(time, flux, ferr)
         q = np.asarray(p0, dtype=float).reshape(-1)
         if q.size != 3 or not np.all(np.isfinite(q)) or q[1] == 0.0:
@@ -456,6 +457,7 @@ class PSPLFitter:
                 nfev=0,
                 message="fixed_parameters",
             ),
+            numpy_result=numpy_result,
         )
 
     def fit_fixed_model(self, time, flux, ferr, p0, *, model_kind=None):
@@ -761,8 +763,12 @@ class FSPLFitter:
         *,
         pspl_params=None,
         observed_scale=None,
+        numpy_result=False,
     ) -> SingleLensFitResult:
-        """Fit FSPL, using the observed-duration seed grid when ``p0`` is absent."""
+        """Fit FSPL, using the observed-duration seed grid when ``p0`` is absent.
+
+        Use ``numpy_result=True`` to keep fitted values as NumPy arrays.
+        """
         time_np, flux_np, ferr_np = _fit_arrays(time, flux, ferr)
         if p0 is None:
             seeds = self._automatic_initial_guesses(
@@ -773,7 +779,7 @@ class FSPLFitter:
                 observed_scale=observed_scale,
             )
             def fit_one(seed):
-                return self._fit_from_seed(time_np, flux_np, ferr_np, seed)
+                return self._fit_from_seed(time_np, flux_np, ferr_np, seed, numpy_result=numpy_result)
 
             best_fit = best_fit_over_seeds(fit_one, seeds, "FSPL", seed_from_fit=self.seed_from_fit)
 
@@ -813,9 +819,9 @@ class FSPLFitter:
                     best_fit = try_alternate(best_fit, seed)
             self._last_fit = best_fit
             return best_fit
-        return self._fit_from_seed(time_np, flux_np, ferr_np, p0)
+        return self._fit_from_seed(time_np, flux_np, ferr_np, p0, numpy_result=numpy_result)
 
-    def evaluate_fixed(self, time, flux, ferr, p0) -> SingleLensFitResult:
+    def evaluate_fixed(self, time, flux, ferr, p0, *, numpy_result=False) -> SingleLensFitResult:
         time_np, flux_np, ferr_np = _fit_arrays(time, flux, ferr)
         q = self._seed(p0)
         fit = self._make_fit(
@@ -830,6 +836,7 @@ class FSPLFitter:
                 nfev=0,
                 message="fixed_parameters",
             ),
+            numpy_result=numpy_result,
         )
         return fit
 

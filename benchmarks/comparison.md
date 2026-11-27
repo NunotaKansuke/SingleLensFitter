@@ -3,24 +3,51 @@
 ## Matched seeded fits
 
 Each package fits the same 1,000 synthetic observations from the same initial
-geometry using SciPy LM (`ftol = xtol = gtol = 10⁻⁶`). Cells give **median
-time in ms / reference χ²** over nine warmed fits on one Xeon Gold 6530 core.
-An independent model scores each fitted geometry. Compare χ² within a row.
+geometry using SciPy LM (`ftol = xtol = gtol = 1e-6`). Bars show the median
+of nine warmed fits on one Xeon Gold 6530 core. Shorter bars mean faster fits.
 
-| Source | SLF (development) | VBM | MulensModel | pyLIMA |
-|---|---:|---:|---:|---:|
-| Point source | 1.11 / 958.90 | 2.46 / 958.90 | 3.58 / 958.90 | 3.15 / 958.90 |
-| ρ = 0.024, uniform | 2.09 / 961.20 | 5.09 / 979.00 | 9.83 / 961.83 | 7.49 / 961.83 |
-| ρ = 0.024, linear | 3.84 / 961.05 | 32.08 / 969.79 | 11.27 / 961.58 | 6.78 / 961.58 |
-| ρ = 0.24, uniform | 2.28 / 959.98 | 6.59 / 960.17 | 12.29 / 1022.81 | 28.08 / 960.17 |
-| ρ = 0.24, linear | 2.42 / 959.89 | 29.61 / 959.98 | 15.38 / 1012.65 | 27.32 / 960.95 |
+![Median fit time in milliseconds for five packages across five source profiles](figures/matched-fit-times.png)
 
-SLF uses analytical derivatives. The other columns share a two-point
-finite-difference driver. For finite sources, VBM uses its batch API at 10⁻⁴
-tolerance. MulensModel uses Gould94/Yoo04, small-source approximations whose
-accuracy drops at ρ = 0.24. pyLIMA uses FSPL at ρ = 0.024 and FSPLarge at ρ = 0.24.
+<details>
+<summary>Show exact fit times and reference χ²</summary>
 
-[All 297 measurements, including the SLF finite-difference control](matched_fits.csv)
+Each cell gives the time followed by the reference χ² in parentheses.
+The reference score uses independent magnification calculations at each
+package’s fitted geometry and a new weighted fit of source and blend flux.
+Lower χ² means closer agreement with the observations within that row.
+
+| Source | SLF (development) | VBM + finite-difference LM | MulensModel | pyLIMA | singlens |
+|---|---:|---:|---:|---:|---:|
+| Point source | 0.81 ms (χ² = 958.90) | 2.39 ms (χ² = 958.90) | 3.51 ms (χ² = 958.90) | 3.13 ms (χ² = 958.90) | 0.86 ms (χ² = 958.90) |
+| ρ = 0.024, uniform | 1.64 ms (χ² = 961.20) | 4.85 ms (χ² = 979.00) | 9.61 ms (χ² = 961.83) | 7.45 ms (χ² = 961.83) | 8.99 ms (χ² = 961.18) |
+| ρ = 0.024, linear | 3.04 ms (χ² = 961.05) | 14.19 ms (χ² = 1069.18) | 10.91 ms (χ² = 961.58) | 6.57 ms (χ² = 961.58) | 6.17 ms (χ² = 961.04) |
+| ρ = 0.24, uniform | 1.73 ms (χ² = 959.98) | 5.74 ms (χ² = 960.17) | 11.25 ms (χ² = 1022.81) | 26.31 ms (χ² = 960.17) | 6.09 ms (χ² = 959.98) |
+| ρ = 0.24, linear | 1.85 ms (χ² = 959.89) | 14.06 ms (χ² = 960.95) | 14.37 ms (χ² = 1012.65) | 26.07 ms (χ² = 960.95) | 5.13 ms (χ² = 959.89) |
+
+</details>
+
+SLF uses analytical derivatives and singlens uses JAX autodiff. The other three series use a shared
+two-point finite-difference driver. The MulensModel series uses a small-source
+approximation for both radii; its reference χ² increases at ρ = 0.24.
+
+<details>
+<summary>Show the model and fit settings for each package</summary>
+
+| Package | Model and settings used for the plotted times |
+|---|---|
+| **[SingleLensFitter](https://github.com/NunotaKansuke/SingleLensFitter)** (development build) | Seeded `PSPLFitter.fit` or `FSPLFitter.fit` with its analytical Jacobian. Both fitters use `numpy_result=True` to return CPU results as NumPy arrays. The finite-source fitter uses the extended limb-darkening table; the linear coefficient is fixed at 0 or 0.5. The CSV also includes the same magnification model with two-point differences. |
+| **[VBMicrolensing 5.7](https://github.com/valboz/VBMicrolensing)** | `PSPLLightCurve` or `ESPLLightCurve` evaluates all epochs in one batch. The engine, ESPL table and time list are prepared before timing. For finite sources, `Tol = RelTol = 1e-3`, `a1 = a` and `minannuli` is 1 for uniform or 2 for linear brightness. The CSV includes a separate run with engine defaults. |
+| **[MulensModel 3.12.0](https://github.com/rpoleski/MulensModel)** | `Model.get_magnification` uses the standard point lens for PSPL, `finite_source_uniform_Gould94` for uniform FSPL and `finite_source_LD_Yoo04` for linear FSPL. The linear coefficient passed to the model is Γ = 2a/(3 − a). |
+| **[pyLIMA 1.9.8](https://github.com/ebachelet/pyLIMA)** | The driver calls `model_magnification` on `PSPLmodel` for a point source, `FSPLmodel` (Yoo approximation) at ρ = 0.024, and `FSPLargemodel` (numerical finite source) at ρ = 0.24. The telescope carries both `ld_a1 = a` and `ld_gamma = 2a/(3 − a)`. Both finite-source models at both radii are in the CSV. |
+| **[singlens](https://github.com/ShotaMiyazaki94/singlens)** | Point-source model or bundled finite-source table at commit `23bcf7a`. JAX `jit` and `jacfwd` evaluate the residual and its Jacobian in float64 on CPU, including flux profiling. Timing uses nine warmed fits on CPU 28 in a separate run with Python 3.11 and JAX 0.10.2. The CSV records the first compiled residual and Jacobian calls separately. |
+
+All five fits solve for source and blend fluxes by weighted least squares at
+each trial geometry. For timings with pyLIMA’s native TRF fitter and the
+MulensModel Event gradient workflow, see the [earlier comparison](method_comparison.csv).
+
+</details>
+
+[All 297 measurements, including the SLF finite-difference control](matched_fits.csv) · [45 singlens fits and JIT warmup times](singlens_fits.csv)
 
 ### Benchmark light curves
 
@@ -73,6 +100,8 @@ the peak. The lower panels give (observed − fitted flux) / σ.
 python -m pip install .
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 taskset -c 28 python benchmarks/methods.py --matched > matched_fits.csv
+PYTHONPATH=/path/to/singlens/src JAX_PLATFORMS=cpu taskset -c 28 python benchmarks/singlens_fits.py > benchmarks/singlens_fits.csv
+python benchmarks/plot_fit_times.py
 python benchmarks/plot_lightcurves.py
 ```
 
