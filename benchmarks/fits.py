@@ -1,13 +1,10 @@
-"""Benchmark single-band PSPL and FSPL fits on deterministic noisy data."""
-import csv
+"""Shared helpers for single-band PSPL and FSPL benchmarks."""
 from pathlib import Path
 from time import perf_counter
 
 import numpy as np
 from scipy.optimize import least_squares
 import VBMicrolensing as vb
-
-from singlelensfitter import FSPLFitter, PSPLFitter, auto_init
 
 
 def vbm_curve(time, finite, coefficient, *, defaults=False, tolerance=1e-4):
@@ -73,44 +70,3 @@ def measure(cases, repeats=9):
                 samples[name].append((elapsed, chi))
         names = names[1:] + names[:1]
     return samples
-
-
-def synthetic_event(finite, a):
-    time = np.linspace(-12, 12, 1000)
-    truth = np.array([.13, 3., .12, *([np.log(.24)] if finite else [])])
-    seed = np.array([.25, 2.8, .14, *([np.log(.22)] if finite else [])])
-    error = np.full_like(time, .02)
-    evaluate = vbm_curve(time, finite, a)
-    flux = .4 + 1.7 * evaluate(truth) + np.random.default_rng(82).normal(0, error)
-    return time, flux, error, seed, evaluate
-
-
-def run(label, finite, a):
-    time, flux, error, seed, evaluate = synthetic_event(finite, a)
-    ft = FSPLFitter(linear_limb_darkening=a) if finite else PSPLFitter()
-
-    def slf(start):
-        result = ft.fit(time, flux, error, start)
-        if not result.optimizer_success:
-            raise RuntimeError(result.optimizer_status)
-        return float(result.chi2)
-
-    def auto():
-        auto_init._last_search = None
-        return slf(None)
-
-    samples = measure({"SLF auto": auto, "SLF seeded": lambda: slf(seed),
-                       "SLF model + FD": lambda: fd_fit(lambda q: ft._magnification(time, q), flux, error, seed),
-                       "VBM + FD": lambda: fd_fit(evaluate, flux, error, seed)})
-    for name, rows in samples.items():
-        for rep, (ms, chi) in enumerate(rows, 1):
-            yield label, name, rep, ms, chi
-
-
-if __name__ == "__main__":
-    import sys
-    writer = csv.writer(sys.stdout)
-    writer.writerow(["model", "method", "repeat", "ms", "chi2"])
-    for label, finite, a in [("PSPL", False, 0.), ("Uniform FSPL", True, 0.),
-                             ("Linear FSPL", True, .5)]:
-        writer.writerows(run(label, finite, a))

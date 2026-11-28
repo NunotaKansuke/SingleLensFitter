@@ -35,8 +35,8 @@ for point-source fits, limb darkening, parallax, and derivatives.
 
 ## Benchmarks
 
-The development version fit 1,000 observations in 0.81 ms for a point source
-and 1.64–3.04 ms for finite sources, starting from supplied parameters on one CPU core.
+On three simulated Roman events with about 7,700 observations each, seeded fits took
+2.49–4.96 ms on one CPU core.
 
-[Benchmark results and light curves](benchmarks/comparison.md#matched-seeded-fits)
-· [Automatic fits and other benchmarks](benchmarks/README.md)
+[RMDC26 benchmark results and light curves](benchmarks/comparison.md#rmdc26-seeded-fits)
+· [OGLE benchmark](benchmarks/README.md)
