@@ -2,10 +2,10 @@
 
 Fit point-source (PSPL) and finite-source (FSPL) microlensing light curves
 directly from single-band photometry.
-SingleLensFitter uses magnification templates and fast Fourier transforms to find initial
-parameters, then refines them with Levenberg–Marquardt optimization using analytic derivatives.
+SingleLensFitter uses magnification templates and **fast Fourier transforms** to find initial
+parameters, then refines them with Levenberg–Marquardt optimization using **analytic derivatives**.
 Both support annual and satellite parallax. Finite-source models also support linear limb darkening.
-SingleLensFitter began as the single-lens fitting code in `jacscanomaly`.
+SingleLensFitter began as the single-lens fitting code in [`jacscanomaly`](https://github.com/NunotaKansuke/jacscanomaly).
 
 ## Install
 
