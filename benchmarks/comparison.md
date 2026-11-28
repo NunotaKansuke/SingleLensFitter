@@ -17,7 +17,8 @@ Three RMDC26 events, about 7,700 F146 observations each, with the same starting 
 
 - **Data.** Unsaturated F146 photometry from the observing season containing the injected peak, with uniform brightness for the two finite-source fits. The event IDs, BJD ranges and starting geometries are in the [event manifest](rmdc/events.csv). [RGES PIT data guide](https://rges-pit.org/data-challenge/data/) · [RMDC26 Machine Learning dataset](https://huggingface.co/datasets/RGES-PIT/MachineLearning)
 - Timing excludes setup, JIT compilation and automatic initialization. [Fitted parameters and reference χ²](rmdc/fits.csv)
-- **[SingleLensFitter](https://github.com/NunotaKansuke/SingleLensFitter)** used seeded PSPL or FSPL with analytical derivatives. **[VBMicrolensing](https://github.com/valboz/VBMicrolensing)** used the batch light-curve API with tolerance 0.001 and finite-difference LM.
+- **[SingleLensFitter](https://github.com/NunotaKansuke/SingleLensFitter)** used seeded PSPL or FSPL with analytical derivatives.
+- **[VBMicrolensing](https://github.com/valboz/VBMicrolensing)** used the batch light-curve API with tolerance 0.001 and finite-difference LM.
 - **[MulensModel](https://github.com/rpoleski/MulensModel)** used point-source magnification outside the peak and `finite_source_uniform_Lee09` within five times the initial `tE × max(|u0|, rho)` on either side of the initial peak for FSPL. All epochs contributed to the fit.
 - **[pyLIMA](https://github.com/ebachelet/pyLIMA)** used its native TRFfit with the original BJD, fitting fluxes for PSPL and profiling them for FSPLarge. Its native stopping tolerances were 10⁻¹⁰. The other four used LM with tolerances of 10⁻⁶.
 - **[singlens](https://github.com/ShotaMiyazaki94/singlens)** used point-source magnification or its bundled uniform-source table, profiled fluxes, and supplied a JAX forward-mode Jacobian to SciPy LM in CPU float64.
