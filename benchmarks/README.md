@@ -1,6 +1,6 @@
 # SingleLensFitter benchmarks
 
-[RMDC26 seeded fits and light curves](comparison.md#rmdc26-seeded-fits)
+[RMDC26](https://rges-pit.org/data-challenge/data/) · [Seeded fits and light curves](comparison.md#rmdc26-seeded-fits)
 
 ## OGLE-2014-BLG-0939
 

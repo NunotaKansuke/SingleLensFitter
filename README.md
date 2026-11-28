@@ -35,7 +35,7 @@ for point-source fits, limb darkening, parallax, and derivatives.
 
 ## Benchmarks
 
-On three simulated Roman events with about 7,700 observations each, seeded fits took
+On three simulated events from [RMDC26](https://rges-pit.org/data-challenge/data/) with about 7,700 observations each, seeded fits took
 2.49–4.96 ms on one CPU core.
 
 [RMDC26 benchmark results and light curves](benchmarks/comparison.md#rmdc26-seeded-fits)

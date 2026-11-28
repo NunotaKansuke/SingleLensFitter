@@ -1,6 +1,6 @@
 # Single-lens fit benchmarks
 
-## RMDC26 seeded fits
+## [RMDC26](https://rges-pit.org/data-challenge/data/) seeded fits
 
 Three RMDC26 events, about 7,700 F146 observations each, with the same starting geometry for all packages. Times are in milliseconds and show the fastest tested configuration per package and event (median of nine warmed fits on one CPU core).
 
@@ -24,19 +24,21 @@ Three RMDC26 events, about 7,700 F146 observations each, with the same starting 
 
 </details>
 
-**RMDC 236625.** F146 observations and the fitted uniform-source curve across the season (left) and near the peak (right). The lower panels show residuals in units of the reported photometric uncertainty.
-
-![RMDC 236625 F146 light curve and finite-source fit](figures/rmdc-236625.png)
-
-<details>
-<summary>Show the other two RMDC light curves</summary>
-
 **RMDC 30834 · Point source**
 
+Each light curve shows the full F146 season (left), the peak (right), and fit residuals in units of the photometric uncertainty (below).
+
 ![RMDC 30834 F146 light curve, point-source fit and residuals](figures/rmdc-30834.png)
+
+<details>
+<summary>Show the two finite-source light curves</summary>
 
 **RMDC 123526 · Finite source**
 
 ![RMDC 123526 F146 light curve, finite-source fit and residuals](figures/rmdc-123526.png)
+
+**RMDC 236625 · Finite source**
+
+![RMDC 236625 F146 light curve, finite-source fit and residuals](figures/rmdc-236625.png)
 
 </details>
